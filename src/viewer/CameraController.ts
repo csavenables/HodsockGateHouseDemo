@@ -4,18 +4,41 @@ import { CameraHomeConfig, CameraLimitsConfig } from '../config/schema';
 import { clamp } from '../utils/clamp';
 import { easeInOutCubic } from '../utils/easing';
 
-interface ResetAnimation {
+interface CameraAnimation {
   startTime: number;
   durationMs: number;
   fromPosition: THREE.Vector3;
   fromTarget: THREE.Vector3;
+  fromFov: number;
   toPosition: THREE.Vector3;
   toTarget: THREE.Vector3;
+  toFov: number;
+}
+
+export interface CameraControlProfile {
+  lockControls?: boolean;
+  limits?: CameraLimitsConfig;
+  enablePan?: boolean;
+}
+
+export interface CameraAnimateOptions {
+  position: [number, number, number];
+  target: [number, number, number];
+  fov: number;
+  durationMs: number;
 }
 
 export class CameraController {
   private readonly controls: OrbitControls;
-  private resetAnimation: ResetAnimation | null = null;
+  private cameraAnimation: CameraAnimation | null = null;
+  private baseLimits: CameraLimitsConfig = {
+    minDistance: 0.1,
+    maxDistance: 100,
+    minPolarAngle: 0,
+    maxPolarAngle: Math.PI,
+  };
+  private baseEnablePan = true;
+  private readonly controlProfiles: CameraControlProfile[] = [];
 
   constructor(
     private readonly camera: THREE.PerspectiveCamera,
@@ -28,11 +51,22 @@ export class CameraController {
   }
 
   applyLimits(limits: CameraLimitsConfig, enablePan: boolean): void {
-    this.controls.minDistance = limits.minDistance;
-    this.controls.maxDistance = limits.maxDistance;
-    this.controls.minPolarAngle = limits.minPolarAngle;
-    this.controls.maxPolarAngle = limits.maxPolarAngle;
-    this.controls.enablePan = enablePan;
+    this.baseLimits = { ...limits };
+    this.baseEnablePan = enablePan;
+    this.applyEffectiveControls();
+  }
+
+  pushControlProfile(profile: CameraControlProfile): void {
+    this.controlProfiles.push(profile);
+    this.applyEffectiveControls();
+  }
+
+  popControlProfile(): void {
+    if (this.controlProfiles.length === 0) {
+      return;
+    }
+    this.controlProfiles.pop();
+    this.applyEffectiveControls();
   }
 
   setAutoRotate(enabled: boolean): void {
@@ -41,14 +75,12 @@ export class CameraController {
   }
 
   resetToHome(home: CameraHomeConfig, durationMs: number): void {
-    this.resetAnimation = {
-      startTime: performance.now(),
+    this.animateTo({
+      position: home.position,
+      target: home.target,
+      fov: home.fov,
       durationMs,
-      fromPosition: this.camera.position.clone(),
-      fromTarget: this.controls.target.clone(),
-      toPosition: new THREE.Vector3(...home.position),
-      toTarget: new THREE.Vector3(...home.target),
-    };
+    });
   }
 
   setHomeImmediately(home: CameraHomeConfig): void {
@@ -65,6 +97,10 @@ export class CameraController {
       target: [this.controls.target.x, this.controls.target.y, this.controls.target.z],
       fov: this.camera.fov,
     };
+  }
+
+  getTarget(out: THREE.Vector3): void {
+    out.copy(this.controls.target);
   }
 
   frameTarget(
@@ -101,24 +137,26 @@ export class CameraController {
   }
 
   update(nowMs: number): void {
-    if (this.resetAnimation) {
-      const elapsed = nowMs - this.resetAnimation.startTime;
-      const t = Math.min(1, elapsed / this.resetAnimation.durationMs);
+    if (this.cameraAnimation) {
+      const elapsed = nowMs - this.cameraAnimation.startTime;
+      const t = Math.min(1, elapsed / this.cameraAnimation.durationMs);
       const eased = easeInOutCubic(t);
 
       this.camera.position.lerpVectors(
-        this.resetAnimation.fromPosition,
-        this.resetAnimation.toPosition,
+        this.cameraAnimation.fromPosition,
+        this.cameraAnimation.toPosition,
         eased,
       );
       this.controls.target.lerpVectors(
-        this.resetAnimation.fromTarget,
-        this.resetAnimation.toTarget,
+        this.cameraAnimation.fromTarget,
+        this.cameraAnimation.toTarget,
         eased,
       );
+      this.camera.fov = THREE.MathUtils.lerp(this.cameraAnimation.fromFov, this.cameraAnimation.toFov, eased);
+      this.camera.updateProjectionMatrix();
 
       if (t >= 1) {
-        this.resetAnimation = null;
+        this.cameraAnimation = null;
       }
     }
 
@@ -127,5 +165,33 @@ export class CameraController {
 
   dispose(): void {
     this.controls.dispose();
+  }
+
+  animateTo(options: CameraAnimateOptions): void {
+    this.cameraAnimation = {
+      startTime: performance.now(),
+      durationMs: Math.max(1, options.durationMs),
+      fromPosition: this.camera.position.clone(),
+      fromTarget: this.controls.target.clone(),
+      fromFov: this.camera.fov,
+      toPosition: new THREE.Vector3(...options.position),
+      toTarget: new THREE.Vector3(...options.target),
+      toFov: options.fov,
+    };
+  }
+
+  private applyEffectiveControls(): void {
+    const topProfile = this.controlProfiles[this.controlProfiles.length - 1];
+    const limits = topProfile?.limits ?? this.baseLimits;
+    const enablePan = topProfile?.enablePan ?? this.baseEnablePan;
+    const lockControls = Boolean(topProfile?.lockControls);
+
+    this.controls.minDistance = limits.minDistance;
+    this.controls.maxDistance = limits.maxDistance;
+    this.controls.minPolarAngle = limits.minPolarAngle;
+    this.controls.maxPolarAngle = limits.maxPolarAngle;
+    this.controls.enableRotate = true;
+    this.controls.enableZoom = true;
+    this.controls.enablePan = !lockControls && enablePan;
   }
 }

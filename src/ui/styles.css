@@ -63,6 +63,108 @@ body,
   height: 100%;
 }
 
+.annotation-host {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.annotation-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.annotation-pins {
+  position: absolute;
+  inset: 0;
+}
+
+.annotation-pin {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  margin-left: -15px;
+  margin-top: -15px;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 70%);
+  background: rgb(14 20 32 / 85%);
+  color: var(--text);
+  font-size: 0.74rem;
+  font-weight: 600;
+  pointer-events: auto;
+  cursor: pointer;
+  transition: opacity 120ms ease, transform 120ms ease, border-color 120ms ease;
+}
+
+.annotation-pin:hover {
+  transform: scale(1.06);
+}
+
+.annotation-pin.is-selected {
+  border-color: rgb(34 193 195 / 92%);
+  background: rgb(17 36 46 / 92%);
+}
+
+.annotation-pin.is-occluded {
+  filter: saturate(0.75);
+}
+
+.annotation-tooltip {
+  position: absolute;
+  width: min(260px, calc(100vw - 24px));
+  padding: 0.65rem 0.7rem;
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 0.55rem;
+  background: rgb(14 21 34 / 88%);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+
+.annotation-tooltip-title {
+  margin: 0 0 0.25rem;
+  font-size: 0.82rem;
+}
+
+.annotation-tooltip-body {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.annotation-nav {
+  position: absolute;
+  left: 50%;
+  bottom: 0.8rem;
+  transform: translateX(-50%);
+  width: min(340px, calc(100% - 24px));
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+  pointer-events: auto;
+}
+
+.annotation-nav-btn {
+  border: 1px solid rgb(255 255 255 / 20%);
+  background: #1f273a;
+  color: var(--text);
+  border-radius: 0.45rem;
+  padding: 0.42rem 0.55rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.annotation-nav-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.annotation-nav-btn-close {
+  border-color: rgb(34 193 195 / 65%);
+}
+
 .splat-panel {
   position: absolute;
   top: 0.8rem;
@@ -97,6 +199,50 @@ body,
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
+}
+
+.annotation-editor {
+  margin-top: 0.6rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid rgb(255 255 255 / 12%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.annotation-editor select,
+.annotation-editor input[type='number'],
+.annotation-editor input[type='text'],
+.annotation-editor textarea {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid rgb(255 255 255 / 20%);
+  border-radius: 0.35rem;
+  background: #111a2a;
+  color: var(--text);
+  padding: 0.2rem 0.35rem;
+  font-size: 0.7rem;
+}
+
+.annotation-editor textarea {
+  resize: vertical;
+  min-height: 58px;
+}
+
+.annotation-editor-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.3rem;
+}
+
+.annotation-editor-actions .splat-toggle {
+  text-align: center;
+  padding: 0.28rem 0.25rem;
+  font-size: 0.7rem;
+}
+
+.annotation-textarea-row {
+  align-items: flex-start;
 }
 
 .interior-title {
@@ -282,6 +428,18 @@ body,
   .splat-toggle {
     font-size: 0.72rem;
     padding: 0.3rem 0.45rem;
+  }
+
+  .annotation-pin {
+    width: 34px;
+    height: 34px;
+    margin-left: -17px;
+    margin-top: -17px;
+    font-size: 0.78rem;
+  }
+
+  .annotation-nav {
+    bottom: max(0.7rem, env(safe-area-inset-bottom));
   }
 
   .app-footer {

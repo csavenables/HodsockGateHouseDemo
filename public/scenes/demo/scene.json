@@ -79,6 +79,84 @@
     "startPadding": 0,
     "endPadding": 0
   },
+  "annotations": {
+    "enabled": true,
+    "defaultSelectedId": null,
+    "pins": [
+      {
+        "id": "crest",
+        "order": 1,
+        "pos": [0, 0.45, 0.12],
+        "title": "Crest",
+        "body": "Upper crest shell and horn geometry.",
+        "camera": {
+          "position": [0.22, 0.42, 1.22],
+          "target": [0, 0.35, 0],
+          "fov": 42,
+          "transitionMs": 700,
+          "lockControls": true,
+          "orbitLimits": {
+            "minDistance": 0.7,
+            "maxDistance": 2.2,
+            "minPolarAngle": 0.45,
+            "maxPolarAngle": 2.2
+          }
+        }
+      },
+      {
+        "id": "core",
+        "order": 2,
+        "pos": [0.08, 0.02, 0.1],
+        "title": "Core Cavity",
+        "body": "Central interior channels and exposed support details.",
+        "camera": {
+          "position": [0.42, 0.08, 1.08],
+          "target": [0.02, 0.02, -0.02],
+          "fov": 44,
+          "transitionMs": 700,
+          "lockControls": true,
+          "orbitLimits": {
+            "minDistance": 0.65,
+            "maxDistance": 2.1,
+            "minPolarAngle": 0.45,
+            "maxPolarAngle": 2.35
+          }
+        }
+      },
+      {
+        "id": "base",
+        "order": 3,
+        "pos": [-0.06, -0.4, 0.08],
+        "title": "Lower Spindle",
+        "body": "Lower taper and structural underside surfaces.",
+        "camera": {
+          "position": [-0.2, -0.2, 1.16],
+          "target": [-0.03, -0.28, -0.03],
+          "fov": 46,
+          "transitionMs": 700,
+          "lockControls": true,
+          "orbitLimits": {
+            "minDistance": 0.75,
+            "maxDistance": 2.4,
+            "minPolarAngle": 0.55,
+            "maxPolarAngle": 2.45
+          }
+        }
+      }
+    ],
+    "ui": {
+      "showTooltip": true,
+      "showNav": true,
+      "pinStyle": "numbered",
+      "occlusion": {
+        "enabled": true,
+        "mode": "depth",
+        "fadeAlpha": 0.18,
+        "disableClickWhenOccluded": true,
+        "epsilon": 0.015
+      }
+    }
+  },
   "interiorView": {
     "enabled": true,
     "target": [-0.6, 1.9, 0],

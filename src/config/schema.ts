@@ -64,6 +64,49 @@ export interface InteriorViewConfig {
   affectSize: boolean;
 }
 
+export interface AnnotationCameraConfig {
+  position: Vec3;
+  target: Vec3;
+  fov: number;
+  transitionMs: number;
+  lockControls: boolean;
+  orbitLimits?: CameraLimitsConfig;
+}
+
+export interface AnnotationPinConfig {
+  id: string;
+  assetId?: string;
+  order: number;
+  pos: Vec3;
+  title: string;
+  body: string;
+  camera: AnnotationCameraConfig;
+}
+
+export type AnnotationOcclusionMode = 'depth';
+
+export interface AnnotationOcclusionConfig {
+  enabled: boolean;
+  mode: AnnotationOcclusionMode;
+  fadeAlpha: number;
+  disableClickWhenOccluded: boolean;
+  epsilon: number;
+}
+
+export interface AnnotationUiConfig {
+  showTooltip: boolean;
+  showNav: boolean;
+  pinStyle: 'numbered';
+  occlusion: AnnotationOcclusionConfig;
+}
+
+export interface AnnotationsConfig {
+  enabled: boolean;
+  defaultSelectedId: string | null;
+  pins: AnnotationPinConfig[];
+  ui: AnnotationUiConfig;
+}
+
 export interface SceneConfig {
   id: string;
   title: string;
@@ -77,6 +120,7 @@ export interface SceneConfig {
   transitions: TransitionConfig;
   reveal: RevealConfig;
   interiorView: InteriorViewConfig;
+  annotations: AnnotationsConfig;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -96,6 +140,22 @@ function readString(obj: Record<string, unknown>, key: string, errors: string[])
   if (typeof value !== 'string' || value.trim().length === 0) {
     errors.push(`"${key}" must be a non-empty string.`);
     return '';
+  }
+  return value;
+}
+
+function readNullableString(
+  obj: Record<string, unknown>,
+  key: string,
+  errors: string[],
+): string | null {
+  const value = obj[key];
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value !== 'string') {
+    errors.push(`"${key}" must be a string or null.`);
+    return null;
   }
   return value;
 }
@@ -203,11 +263,96 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
   if (interiorValue !== undefined && !isObject(interiorValue)) {
     errors.push('"interiorView" must be an object when provided.');
   }
+  const annotationsValue = raw.annotations;
+  if (annotationsValue !== undefined && !isObject(annotationsValue)) {
+    errors.push('"annotations" must be an object when provided.');
+  }
   const transitionsObject = isObject(transitionsValue) ? transitionsValue : {};
   const revealObject = isObject(revealValue) ? revealValue : {};
   const interiorObject = isObject(interiorValue) ? interiorValue : {};
+  const annotationsObject = isObject(annotationsValue) ? annotationsValue : {};
+  if (annotationsObject.ui !== undefined && !isObject(annotationsObject.ui)) {
+    errors.push('"annotations.ui" must be an object when provided.');
+  }
+  if (isObject(annotationsObject.ui) && annotationsObject.ui.occlusion !== undefined && !isObject(annotationsObject.ui.occlusion)) {
+    errors.push('"annotations.ui.occlusion" must be an object when provided.');
+  }
+  const annotationsUiObject = isObject(annotationsObject.ui) ? annotationsObject.ui : {};
+  const annotationsOcclusionObject = isObject(annotationsUiObject.occlusion)
+    ? annotationsUiObject.occlusion
+    : {};
   const cameraHomeObject = isObject(cameraHomeValue) ? cameraHomeValue : {};
   const cameraLimitsObject = isObject(cameraLimitsValue) ? cameraLimitsValue : {};
+
+  const pins: AnnotationPinConfig[] = [];
+  const providedOrders = new Set<number>();
+  const providedIds = new Set<string>();
+  const pinsValue = annotationsObject.pins;
+  if (pinsValue !== undefined && !Array.isArray(pinsValue)) {
+    errors.push('"annotations.pins" must be an array when provided.');
+  } else if (Array.isArray(pinsValue)) {
+    for (let index = 0; index < pinsValue.length; index += 1) {
+      const pinValue = pinsValue[index];
+      if (!isObject(pinValue)) {
+        errors.push(`annotations.pins[${index}] must be an object.`);
+        continue;
+      }
+      const cameraValue = pinValue.camera;
+      if (!isObject(cameraValue)) {
+        errors.push(`annotations.pins[${index}].camera must be an object.`);
+        continue;
+      }
+      const orbitLimitsValue = cameraValue.orbitLimits;
+      if (orbitLimitsValue !== undefined && !isObject(orbitLimitsValue)) {
+        errors.push(`annotations.pins[${index}].camera.orbitLimits must be an object when provided.`);
+      }
+
+      const orderRaw = pinValue.order;
+      const order = isNumber(orderRaw) ? orderRaw : index + 1;
+      if (providedOrders.has(order)) {
+        errors.push(`annotations.pins[${index}].order must be unique.`);
+      } else {
+        providedOrders.add(order);
+      }
+
+      const pinId = readString(pinValue, 'id', errors);
+      if (pinId && providedIds.has(pinId)) {
+        errors.push(`annotations.pins[${index}].id must be unique.`);
+      } else if (pinId) {
+        providedIds.add(pinId);
+      }
+
+      let orbitLimits: CameraLimitsConfig | undefined;
+      if (isObject(orbitLimitsValue)) {
+        orbitLimits = {
+          minDistance: readNumber(orbitLimitsValue, 'minDistance', errors),
+          maxDistance: readNumber(orbitLimitsValue, 'maxDistance', errors),
+          minPolarAngle: readNumber(orbitLimitsValue, 'minPolarAngle', errors),
+          maxPolarAngle: readNumber(orbitLimitsValue, 'maxPolarAngle', errors),
+        };
+      }
+
+      pins.push({
+        id: pinId,
+        assetId:
+          typeof pinValue.assetId === 'string' && pinValue.assetId.trim().length > 0
+            ? pinValue.assetId
+            : undefined,
+        order,
+        pos: readVec3(pinValue, 'pos', errors),
+        title: readString(pinValue, 'title', errors),
+        body: readString(pinValue, 'body', errors),
+        camera: {
+          position: readVec3(cameraValue, 'position', errors),
+          target: readVec3(cameraValue, 'target', errors),
+          fov: readNumber(cameraValue, 'fov', errors),
+          transitionMs: readNumber(cameraValue, 'transitionMs', errors),
+          lockControls: readBoolean(cameraValue, 'lockControls', errors),
+          orbitLimits,
+        },
+      });
+    }
+  }
 
   if (errors.length > 0) {
     return { ok: false, errors };
@@ -266,6 +411,29 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
       maxDistance: isNumber(interiorObject.maxDistance) ? interiorObject.maxDistance : 20,
       affectSize: typeof interiorObject.affectSize === 'boolean' ? interiorObject.affectSize : false,
     },
+    annotations: {
+      enabled: typeof annotationsObject.enabled === 'boolean' ? annotationsObject.enabled : false,
+      defaultSelectedId: readNullableString(annotationsObject, 'defaultSelectedId', errors),
+      pins,
+      ui: {
+        showTooltip: typeof annotationsUiObject.showTooltip === 'boolean' ? annotationsUiObject.showTooltip : true,
+        showNav: typeof annotationsUiObject.showNav === 'boolean' ? annotationsUiObject.showNav : true,
+        pinStyle: annotationsUiObject.pinStyle === 'numbered' ? 'numbered' : 'numbered',
+        occlusion: {
+          enabled:
+            typeof annotationsOcclusionObject.enabled === 'boolean'
+              ? annotationsOcclusionObject.enabled
+              : true,
+          mode: annotationsOcclusionObject.mode === 'depth' ? 'depth' : 'depth',
+          fadeAlpha: isNumber(annotationsOcclusionObject.fadeAlpha) ? annotationsOcclusionObject.fadeAlpha : 0.18,
+          disableClickWhenOccluded:
+            typeof annotationsOcclusionObject.disableClickWhenOccluded === 'boolean'
+              ? annotationsOcclusionObject.disableClickWhenOccluded
+              : true,
+          epsilon: isNumber(annotationsOcclusionObject.epsilon) ? annotationsOcclusionObject.epsilon : 0.01,
+        },
+      },
+    },
   };
 
   if (config.camera.limits.maxDistance < config.camera.limits.minDistance) {
@@ -290,8 +458,39 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
     errors.push('"interiorView.maxDistance" must be > 0.');
   }
 
+  for (const pin of config.annotations.pins) {
+    if (pin.assetId && !config.assets.some((asset) => asset.id === pin.assetId)) {
+      errors.push(`annotations pin "${pin.id}" assetId "${pin.assetId}" must match an existing asset id.`);
+    }
+    if (pin.camera.transitionMs <= 0) {
+      errors.push(`annotations pin "${pin.id}" camera.transitionMs must be > 0.`);
+    }
+    if (pin.camera.fov <= 0) {
+      errors.push(`annotations pin "${pin.id}" camera.fov must be > 0.`);
+    }
+    if (pin.camera.orbitLimits) {
+      if (pin.camera.orbitLimits.maxDistance < pin.camera.orbitLimits.minDistance) {
+        errors.push(`annotations pin "${pin.id}" camera.orbitLimits.maxDistance must be >= minDistance.`);
+      }
+      if (pin.camera.orbitLimits.maxPolarAngle < pin.camera.orbitLimits.minPolarAngle) {
+        errors.push(`annotations pin "${pin.id}" camera.orbitLimits.maxPolarAngle must be >= minPolarAngle.`);
+      }
+    }
+  }
+  if (
+    config.annotations.defaultSelectedId &&
+    !config.annotations.pins.some((pin) => pin.id === config.annotations.defaultSelectedId)
+  ) {
+    errors.push('"annotations.defaultSelectedId" must match an existing pin id.');
+  }
+  if (config.annotations.ui.occlusion.epsilon < 0) {
+    errors.push('"annotations.ui.occlusion.epsilon" must be >= 0.');
+  }
+
   config.interiorView.softness = Math.min(0.6, Math.max(0.05, config.interiorView.softness));
   config.interiorView.fadeAlpha = Math.min(1, Math.max(0, config.interiorView.fadeAlpha));
+  config.annotations.ui.occlusion.fadeAlpha = Math.min(1, Math.max(0, config.annotations.ui.occlusion.fadeAlpha));
+  config.annotations.pins.sort((a, b) => a.order - b.order);
 
   if (errors.length > 0) {
     return { ok: false, errors };

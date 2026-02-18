@@ -1,4 +1,10 @@
 import * as THREE from 'three';
+import {
+  AnnotationEditorState,
+  AnnotationManager,
+  AnnotationUpdatePatch,
+} from '../annotations/AnnotationManager';
+import { AnnotationPersistence } from '../annotations/AnnotationPersistence';
 import { InteriorViewConfig, SceneConfig } from '../config/schema';
 import { GaussianSplatRenderer } from '../renderers/GaussianSplatRenderer';
 import { InputBindings } from './InputBindings';
@@ -16,8 +22,19 @@ export interface ViewerUi {
   ): void;
   setSceneTitle(title: string): void;
   setSplatOptions(items: SplatToggleItem[], onSelect: (id: string) => void): void;
+  configureAnnotationEditor(handlers: {
+    onToggleEdit(enabled: boolean): void;
+    onSelectPin(id: string): void;
+    onAddPin(): void;
+    onDeleteSelected(): void;
+    onUpdateSelected(patch: AnnotationUpdatePatch): void;
+    onNudge(axis: 'x' | 'y' | 'z', delta: number): void;
+    onSave(): void;
+  }): void;
+  setAnnotationEditorState(state: AnnotationEditorState): void;
   getOverlayElement(): HTMLElement;
   getCanvasHostElement(): HTMLElement;
+  getAnnotationHostElement(): HTMLElement;
 }
 
 export class Viewer {
@@ -28,6 +45,8 @@ export class Viewer {
   private readonly splatRenderer = new GaussianSplatRenderer();
   private readonly sceneManager: SceneManager;
   private readonly inputBindings: InputBindings;
+  private readonly annotationManager: AnnotationManager;
+  private readonly annotationPersistence = new AnnotationPersistence();
   private readonly resizeObserver: ResizeObserver;
 
   private activeSceneId = '';
@@ -59,6 +78,8 @@ export class Viewer {
         this.ui.setSceneTitle(config.title);
       },
       onItemsChanged: (items) => {
+        const activeItem = items.find((item) => item.active);
+        this.annotationManager.setActiveAssetId(activeItem?.id ?? null);
         this.ui.setSplatOptions(items, (id) => {
           this.enqueueSplatSelection(id);
         });
@@ -68,6 +89,27 @@ export class Viewer {
     this.inputBindings = new InputBindings({
       onReset: () => this.resetView(),
       onToggleAutorotate: () => this.toggleAutorotate(),
+    });
+    this.annotationManager = new AnnotationManager({
+      host: this.ui.getAnnotationHostElement(),
+      camera: this.camera,
+      renderer: this.webglRenderer,
+      scene: this.scene,
+      cameraController: this.cameraController,
+    });
+    this.annotationManager.onEditorStateChange((state) => {
+      this.ui.setAnnotationEditorState(state);
+    });
+    this.ui.configureAnnotationEditor({
+      onToggleEdit: (enabled) => this.annotationManager.setEditMode(enabled),
+      onSelectPin: (id) => this.annotationManager.selectAnnotation(id),
+      onAddPin: () => this.annotationManager.addPin(),
+      onDeleteSelected: () => this.annotationManager.deleteSelected(),
+      onUpdateSelected: (patch) => this.annotationManager.updateSelected(patch),
+      onNudge: (axis, delta) => this.annotationManager.nudgeSelected(axis, delta),
+      onSave: () => {
+        void this.saveAnnotations();
+      },
     });
 
     this.scene.background = new THREE.Color('#0b0e14');
@@ -98,10 +140,15 @@ export class Viewer {
     }
 
     try {
+      this.annotationManager.clear();
       this.ui.clearError();
       const config = await this.sceneManager.loadScene(sceneId);
-      this.activeConfig = config;
-      this.applySceneConfig(config);
+      const savedAnnotations = await this.annotationPersistence.load(sceneId);
+      const mergedConfig: SceneConfig = savedAnnotations
+        ? { ...config, annotations: savedAnnotations }
+        : config;
+      this.activeConfig = mergedConfig;
+      this.applySceneConfig(mergedConfig);
       this.activeSceneId = sceneId;
       const interior = this.sceneManager.getInteriorViewConfig();
       if (interior) {
@@ -111,6 +158,7 @@ export class Viewer {
       }
       this.ui.setLoading(false);
       await this.sceneManager.revealActiveScene();
+      this.annotationManager.configure(mergedConfig);
     } catch (error) {
       this.ui.setLoading(false);
       const message = error instanceof Error ? error.message : 'Unknown error while loading scene.';
@@ -168,6 +216,7 @@ export class Viewer {
     this.activeConfig = null;
     this.fittedHome = null;
     this.inputBindings.dispose();
+    this.annotationManager.dispose();
     void this.sceneManager.dispose();
     this.cameraController.dispose();
     this.webglRenderer.dispose();
@@ -253,6 +302,7 @@ export class Viewer {
     this.cameraController.update(now);
     this.splatRenderer.setInteriorCameraPosition(this.camera.position);
     this.splatRenderer.update();
+    this.annotationManager.update(now, this.container.clientWidth, this.container.clientHeight);
     this.splatRenderer.render();
   };
 
@@ -284,5 +334,30 @@ export class Viewer {
     if (this.activeConfig) {
       this.fitCameraToContent(this.activeConfig);
     }
+  }
+
+  private async saveAnnotations(): Promise<void> {
+    if (!this.activeConfig) {
+      return;
+    }
+    const annotations = this.annotationManager.exportAnnotations();
+    if (!annotations) {
+      return;
+    }
+    const result = await this.annotationPersistence.save(this.activeSceneId || 'scene', annotations);
+    if (result.ok) {
+      this.activeConfig = { ...this.activeConfig, annotations };
+      return;
+    }
+
+    const payload = JSON.stringify({ annotations }, null, 2);
+    const blob = new Blob([payload], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${this.activeSceneId || 'scene'}-annotations.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    console.warn(`Annotation save fallback used: ${result.reason}`);
   }
 }
