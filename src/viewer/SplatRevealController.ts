@@ -1,6 +1,7 @@
 import { RevealConfig } from '../config/schema';
 import { SplatHandle, SplatRevealBounds } from '../renderers/types';
 import { easeInOutCubic } from '../utils/easing';
+import * as THREE from 'three';
 
 function applyEase(t: number, ease: RevealConfig['ease']): number {
   if (ease === 'linear') {
@@ -10,25 +11,47 @@ function applyEase(t: number, ease: RevealConfig['ease']): number {
 }
 
 export class SplatRevealController {
+  private readonly baseScaleByHandle = new WeakMap<SplatHandle, THREE.Vector3>();
+
+  primeRevealInStart(handle: SplatHandle, config: RevealConfig): void {
+    if (!config.enabled) {
+      this.applyRevealScale(handle, 1, false);
+      return;
+    }
+    this.applyRevealScale(handle, 0, config.affectSize);
+  }
+
   async revealIn(
     handle: SplatHandle,
     boundsY: SplatRevealBounds,
     config: RevealConfig,
   ): Promise<void> {
     if (!config.enabled) {
+      this.applyRevealScale(handle, 1, false);
       handle.setRevealParams({
         enabled: false,
+        mode: config.mode === 'bottomSphere' ? 'bottomSphere' : 'yRamp',
         revealY: boundsY.maxY,
         band: config.band,
+        sphereOrigin: this.computeBottomSphereOrigin(handle, config),
+        sphereRadius: this.computeBottomSphereMaxRadius(handle, config),
+        sphereFeather: config.bottomSphere.feather,
+        clipBottomEnabled: config.bottomClip.enabled,
+        clipBottomY: handle.boundsY.minY + config.bottomClip.offset,
         affectAlpha: config.affectAlpha,
         affectSize: config.affectSize,
       });
       return;
     }
 
+    if (config.mode === 'bottomSphere') {
+      await this.animateSphere(handle, config, 1);
+      return;
+    }
+
     const minY = boundsY.minY + config.startPadding;
     const maxY = boundsY.maxY + config.endPadding;
-    await this.animate(handle, minY, maxY, config, 1);
+    await this.animateY(handle, minY, maxY, config, 1);
   }
 
   async revealOut(
@@ -40,12 +63,17 @@ export class SplatRevealController {
       return;
     }
 
+    if (config.mode === 'bottomSphere') {
+      await this.animateSphere(handle, config, 0.5, true);
+      return;
+    }
+
     const minY = boundsY.minY + config.startPadding;
     const maxY = boundsY.maxY + config.endPadding;
-    await this.animate(handle, maxY, minY, config, 0.5);
+    await this.animateY(handle, maxY, minY, config, 0.5);
   }
 
-  private async animate(
+  private async animateY(
     handle: SplatHandle,
     fromY: number,
     toY: number,
@@ -60,10 +88,17 @@ export class SplatRevealController {
         const t = Math.min(1, (now - start) / duration);
         const eased = applyEase(t, config.ease);
         const revealY = fromY + (toY - fromY) * eased;
+        this.applyRevealScale(handle, eased, config.affectSize);
         handle.setRevealParams({
           enabled: true,
+          mode: 'yRamp',
           revealY,
           band: config.band,
+          sphereOrigin: this.computeBottomSphereOrigin(handle, config),
+          sphereRadius: 0,
+          sphereFeather: config.bottomSphere.feather,
+          clipBottomEnabled: config.bottomClip.enabled,
+          clipBottomY: handle.boundsY.minY + config.bottomClip.offset,
           affectAlpha: config.affectAlpha,
           affectSize: config.affectSize,
         });
@@ -76,5 +111,160 @@ export class SplatRevealController {
       };
       requestAnimationFrame(step);
     });
+    this.applyRevealScale(handle, 1, config.affectSize);
+  }
+
+  private async animateSphere(
+    handle: SplatHandle,
+    config: RevealConfig,
+    durationScale: number,
+    reverse = false,
+  ): Promise<void> {
+    const start = performance.now();
+    const duration = Math.max(100, config.bottomSphere.durationMs * durationScale);
+    const origin = this.computeBottomSphereOrigin(handle, config);
+    const maxRadius = this.computeBottomSphereMaxRadius(handle, config);
+    const minRadius = Math.max(0.0001, config.bottomSphere.feather * 0.02);
+    const initialProgress = reverse ? 1 : 0;
+    const initialRadius = minRadius + (maxRadius - minRadius) * initialProgress;
+    this.applyRevealScale(handle, initialProgress, config.affectSize);
+    handle.setRevealParams({
+      enabled: true,
+      mode: 'bottomSphere',
+      revealY: handle.boundsY.maxY,
+      band: config.band,
+      sphereOrigin: origin,
+      sphereRadius: initialRadius,
+      sphereFeather: config.bottomSphere.feather,
+      clipBottomEnabled: config.bottomClip.enabled,
+      clipBottomY: handle.boundsY.minY + config.bottomClip.offset,
+      affectAlpha: config.affectAlpha,
+      affectSize: config.affectSize,
+    });
+
+    await new Promise<void>((resolve) => {
+      const step = (now: number) => {
+        const t = Math.min(1, (now - start) / duration);
+        const eased = applyEase(t, config.ease);
+        const progress = reverse ? 1 - eased : eased;
+        this.applyRevealScale(handle, progress, config.affectSize);
+        const radius = minRadius + (maxRadius - minRadius) * progress;
+        handle.setRevealParams({
+          enabled: true,
+          mode: 'bottomSphere',
+          revealY: handle.boundsY.maxY,
+          band: config.band,
+          sphereOrigin: origin,
+          sphereRadius: radius,
+          sphereFeather: config.bottomSphere.feather,
+          clipBottomEnabled: config.bottomClip.enabled,
+          clipBottomY: handle.boundsY.minY + config.bottomClip.offset,
+          affectAlpha: config.affectAlpha,
+          affectSize: config.affectSize,
+        });
+
+        if (t >= 1) {
+          resolve();
+          return;
+        }
+        requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
+    if (!reverse) {
+      this.applyRevealScale(handle, 1, config.affectSize);
+      // Safety release: push radius beyond extents, then disable masking.
+      handle.setRevealParams({
+        enabled: true,
+        mode: 'bottomSphere',
+        revealY: handle.boundsY.maxY,
+        band: config.band,
+        sphereOrigin: origin,
+        sphereRadius: maxRadius * 2.25,
+        sphereFeather: config.bottomSphere.feather,
+        clipBottomEnabled: config.bottomClip.enabled,
+        clipBottomY: handle.boundsY.minY + config.bottomClip.offset,
+        affectAlpha: config.affectAlpha,
+        affectSize: config.affectSize,
+      });
+      handle.setRevealParams({
+        enabled: false,
+        mode: 'bottomSphere',
+        revealY: handle.boundsY.maxY,
+        band: config.band,
+        sphereOrigin: origin,
+        sphereRadius: maxRadius * 2.25,
+        sphereFeather: config.bottomSphere.feather,
+        clipBottomEnabled: config.bottomClip.enabled,
+        clipBottomY: handle.boundsY.minY + config.bottomClip.offset,
+        affectAlpha: config.affectAlpha,
+        affectSize: config.affectSize,
+      });
+    }
+  }
+
+  private computeBottomSphereOrigin(handle: SplatHandle, config: RevealConfig): THREE.Vector3 {
+    const box = handle.sampledBounds
+      ? new THREE.Box3(handle.sampledBounds.min.clone(), handle.sampledBounds.max.clone())
+      : new THREE.Box3().setFromObject(handle.object3D);
+    if (box.isEmpty()) {
+      return new THREE.Vector3(0, config.bottomSphere.originYOffset, 0);
+    }
+    return new THREE.Vector3(
+      (box.min.x + box.max.x) * 0.5,
+      box.min.y + config.bottomSphere.originYOffset,
+      (box.min.z + box.max.z) * 0.5,
+    );
+  }
+
+  private computeBottomSphereMaxRadius(handle: SplatHandle, config: RevealConfig): number {
+    const box = handle.sampledBounds
+      ? new THREE.Box3(handle.sampledBounds.min.clone(), handle.sampledBounds.max.clone())
+      : new THREE.Box3().setFromObject(handle.object3D);
+    const origin = this.computeBottomSphereOrigin(handle, config);
+    if (box.isEmpty()) {
+      return 1;
+    }
+
+    let maxDistance = 0;
+    const corners = [
+      new THREE.Vector3(box.min.x, box.min.y, box.min.z),
+      new THREE.Vector3(box.min.x, box.min.y, box.max.z),
+      new THREE.Vector3(box.min.x, box.max.y, box.min.z),
+      new THREE.Vector3(box.min.x, box.max.y, box.max.z),
+      new THREE.Vector3(box.max.x, box.min.y, box.min.z),
+      new THREE.Vector3(box.max.x, box.min.y, box.max.z),
+      new THREE.Vector3(box.max.x, box.max.y, box.min.z),
+      new THREE.Vector3(box.max.x, box.max.y, box.max.z),
+    ];
+    for (const corner of corners) {
+      maxDistance = Math.max(maxDistance, origin.distanceTo(corner));
+    }
+    const size = box.getSize(new THREE.Vector3());
+    const diagonal = Math.max(0.001, size.length());
+    const requiredScale = Math.max(2.2, config.bottomSphere.maxRadiusScale);
+    const overscan = diagonal * 0.45;
+    return Math.max(0.01, maxDistance * requiredScale + overscan);
+  }
+
+  private applyRevealScale(handle: SplatHandle, progress: number, enabled: boolean): void {
+    const baseScale = this.getBaseScale(handle);
+    if (!enabled) {
+      handle.object3D.scale.copy(baseScale);
+      return;
+    }
+    const p = Math.min(1, Math.max(0, progress));
+    const factor = 0.86 + p * 0.14;
+    handle.object3D.scale.set(baseScale.x * factor, baseScale.y * factor, baseScale.z * factor);
+  }
+
+  private getBaseScale(handle: SplatHandle): THREE.Vector3 {
+    const cached = this.baseScaleByHandle.get(handle);
+    if (cached) {
+      return cached;
+    }
+    const stored = handle.object3D.scale.clone();
+    this.baseScaleByHandle.set(handle, stored);
+    return stored;
   }
 }

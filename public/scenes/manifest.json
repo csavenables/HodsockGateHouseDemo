@@ -1,6 +1,10 @@
 {
   "scenes": [
     {
+      "id": "cake",
+      "title": "Harmony 2nd Birthday Cake"
+    },
+    {
       "id": "demo",
       "title": "Demo Product Scene"
     },

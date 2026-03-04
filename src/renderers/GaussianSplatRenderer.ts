@@ -5,15 +5,17 @@ import {
   RendererContext,
   SplatFitData,
   SplatHandle,
+  SplatSampleCloud,
   SplatRenderer,
   SplatRevealBounds,
   SplatRevealParams,
+  SplatSampleOptions,
 } from './types';
 
 const SUPPORTED_EXTENSIONS = ['.ply', '.splat', '.ksplat', '.spz'] as const;
 const MAX_REVEAL_SCENES = 32;
 const REVEAL_PATCH_FLAG = '__splatRevealPatched';
-const ENABLE_SHADER_REVEAL = false;
+const ENABLE_SHADER_REVEAL = true;
 const INTERIOR_PATCH_FLAG = '__splatInteriorPatched';
 
 interface RevealMaterialBinding {
@@ -24,6 +26,15 @@ interface RevealMaterialBinding {
     uRevealBand: { value: number[] };
     uRevealMinY: { value: number[] };
     uRevealMaxY: { value: number[] };
+    uRevealMode: { value: number[] };
+    uSphereEnabled: { value: number[] };
+    uSphereOriginX: { value: number[] };
+    uSphereOriginY: { value: number[] };
+    uSphereOriginZ: { value: number[] };
+    uSphereRadius: { value: number[] };
+    uSphereFeather: { value: number[] };
+    uClipBottomEnabled: { value: number[] };
+    uClipBottomY: { value: number[] };
     uRevealAffectAlpha: { value: number[] };
     uRevealAffectSize: { value: number[] };
   };
@@ -142,6 +153,66 @@ export class GaussianSplatRenderer implements SplatRenderer {
     handle.object3D.visible = visible;
     this.fitData = null;
     this.viewer?.forceRenderNextFrame();
+  }
+
+  getSplatSampleCloud(id: string, options: SplatSampleOptions): SplatSampleCloud {
+    if (!this.viewer || this.sceneGraphMutating) {
+      return { points: [] };
+    }
+    const sceneIndex = this.handles.findIndex((handle) => handle.id === id);
+    if (sceneIndex < 0) {
+      return { points: [] };
+    }
+    const scene = this.viewer.getSplatScene(sceneIndex);
+    const count = scene.splatBuffer.getSplatCount();
+    if (count <= 0) {
+      return { points: [] };
+    }
+
+    const maxSamples = Math.max(1, Math.floor(options.maxSamples));
+    const includeColors = options.includeColors ?? false;
+    const step = options.randomize
+      ? Math.max(1, Math.floor(count / maxSamples))
+      : Math.max(1, Math.floor(count / maxSamples));
+    const useWorldSpace = options.space !== 'local';
+    const transform = useWorldSpace
+      ? new THREE.Matrix4().compose(scene.position, scene.quaternion, scene.scale)
+      : undefined;
+    const sample = new THREE.Vector3();
+    const sampleColor = new THREE.Vector4();
+    const points: THREE.Vector3[] = [];
+    const sampledColors: number[] = [];
+    const appendSample = (splatIndex: number): void => {
+      scene.splatBuffer.getSplatCenter(splatIndex, sample, transform);
+      points.push(sample.clone());
+      if (includeColors) {
+        scene.splatBuffer.getSplatColor(splatIndex, sampleColor);
+        sampledColors.push(
+          THREE.MathUtils.clamp(sampleColor.x / 255, 0, 1),
+          THREE.MathUtils.clamp(sampleColor.y / 255, 0, 1),
+          THREE.MathUtils.clamp(sampleColor.z / 255, 0, 1),
+        );
+      }
+    };
+    if (options.randomize) {
+      const jitter = step > 1 ? Math.floor(Math.random() * step) : 0;
+      for (let splatIndex = jitter; splatIndex < count && points.length < maxSamples; splatIndex += step) {
+        appendSample(splatIndex);
+      }
+      return includeColors
+        ? { points, colors: new Float32Array(sampledColors) }
+        : { points };
+    }
+    for (let splatIndex = 0; splatIndex < count && points.length < maxSamples; splatIndex += step) {
+      appendSample(splatIndex);
+    }
+    return includeColors
+      ? { points, colors: new Float32Array(sampledColors) }
+      : { points };
+  }
+
+  getSplatSamplePoints(id: string, options: SplatSampleOptions): THREE.Vector3[] {
+    return this.getSplatSampleCloud(id, options).points;
   }
 
   setInteriorView(config: InteriorViewConfig): void {
@@ -328,13 +399,23 @@ export class GaussianSplatRenderer implements SplatRenderer {
   }
 
   private createSplatHandle(asset: SplatAssetConfig, object3D: THREE.Object3D, sceneIndex: number): SplatHandle {
-    const bounds = this.computeBoundsFromObject(object3D);
+    const scene = this.viewer?.getSplatScene(sceneIndex);
+    const sampledBounds = scene ? this.computeBoundsFromScene(scene) : null;
+    const bounds = sampledBounds
+      ? { minY: sampledBounds.min.y, maxY: sampledBounds.max.y }
+      : this.computeBoundsFromObject(object3D);
     const revealBinding = this.ensureRevealPatch();
 
     const handle: SplatHandle = {
       id: asset.id,
       object3D,
       boundsY: { ...bounds },
+      sampledBounds: sampledBounds
+        ? {
+            min: sampledBounds.min.clone(),
+            max: sampledBounds.max.clone(),
+          }
+        : undefined,
       setRevealBounds: (nextBounds: SplatRevealBounds): void => {
         handle.boundsY = { ...nextBounds };
         if (revealBinding) {
@@ -345,12 +426,22 @@ export class GaussianSplatRenderer implements SplatRenderer {
       setRevealParams: (params: SplatRevealParams): void => {
         if (revealBinding) {
           revealBinding.uniforms.uRevealEnabled.value[sceneIndex] = params.enabled ? 1 : 0;
+          revealBinding.uniforms.uRevealMode.value[sceneIndex] = params.mode === 'bottomSphere' ? 1 : 0;
           revealBinding.uniforms.uRevealY.value[sceneIndex] = params.revealY;
           revealBinding.uniforms.uRevealBand.value[sceneIndex] = Math.max(0.0001, params.band);
+          revealBinding.uniforms.uSphereEnabled.value[sceneIndex] =
+            params.enabled && params.mode === 'bottomSphere' ? 1 : 0;
+          revealBinding.uniforms.uSphereOriginX.value[sceneIndex] = params.sphereOrigin.x;
+          revealBinding.uniforms.uSphereOriginY.value[sceneIndex] = params.sphereOrigin.y;
+          revealBinding.uniforms.uSphereOriginZ.value[sceneIndex] = params.sphereOrigin.z;
+          revealBinding.uniforms.uSphereRadius.value[sceneIndex] = Math.max(0.0001, params.sphereRadius);
+          revealBinding.uniforms.uSphereFeather.value[sceneIndex] = Math.max(0.0001, params.sphereFeather);
+          revealBinding.uniforms.uClipBottomEnabled.value[sceneIndex] = params.clipBottomEnabled ? 1 : 0;
+          revealBinding.uniforms.uClipBottomY.value[sceneIndex] = params.clipBottomY;
           revealBinding.uniforms.uRevealAffectAlpha.value[sceneIndex] = params.affectAlpha ? 1 : 0;
           revealBinding.uniforms.uRevealAffectSize.value[sceneIndex] = params.affectSize ? 1 : 0;
         } else if (!this.warnedRevealFallback) {
-          console.warn('Y-ramp shader reveal unavailable. Using scene opacity dissolve fallback.');
+          console.warn('Shader reveal unavailable. Using scene opacity dissolve fallback.');
           this.warnedRevealFallback = true;
           this.applySceneOpacityReveal(object3D, params, handle.boundsY);
         } else {
@@ -361,6 +452,8 @@ export class GaussianSplatRenderer implements SplatRenderer {
       dispose: (): void => {
         if (revealBinding) {
           revealBinding.uniforms.uRevealEnabled.value[sceneIndex] = 0;
+          revealBinding.uniforms.uSphereEnabled.value[sceneIndex] = 0;
+          revealBinding.uniforms.uClipBottomEnabled.value[sceneIndex] = 0;
         }
       },
     };
@@ -375,6 +468,33 @@ export class GaussianSplatRenderer implements SplatRenderer {
       return { minY: -1, maxY: 1 };
     }
     return { minY: box.min.y, maxY: box.max.y };
+  }
+
+  private computeBoundsFromScene(scene: {
+    splatBuffer: { getSplatCount(): number; getSplatCenter(index: number, out: THREE.Vector3, transform?: THREE.Matrix4): void };
+    position: THREE.Vector3;
+    quaternion: THREE.Quaternion;
+    scale: THREE.Vector3;
+  }): THREE.Box3 | null {
+    const count = scene.splatBuffer.getSplatCount();
+    if (count <= 0) {
+      return null;
+    }
+    const box = new THREE.Box3();
+    const sample = new THREE.Vector3();
+    const transform = new THREE.Matrix4().compose(scene.position, scene.quaternion, scene.scale);
+    const maxSamples = 180000;
+    const step = Math.max(1, Math.floor(count / maxSamples));
+    let sampled = 0;
+    for (let splatIndex = 0; splatIndex < count; splatIndex += step) {
+      scene.splatBuffer.getSplatCenter(splatIndex, sample, transform);
+      box.expandByPoint(sample);
+      sampled += 1;
+    }
+    if (sampled === 0 || box.isEmpty()) {
+      return null;
+    }
+    return box;
   }
 
   private ensureRevealPatch(): RevealMaterialBinding | null {
@@ -425,6 +545,15 @@ export class GaussianSplatRenderer implements SplatRenderer {
       uRevealBand: { value: makeRevealUniformArrays(0.12) },
       uRevealMinY: { value: makeRevealUniformArrays(-1) },
       uRevealMaxY: { value: makeRevealUniformArrays(1) },
+      uRevealMode: { value: makeRevealUniformArrays(0) },
+      uSphereEnabled: { value: makeRevealUniformArrays(0) },
+      uSphereOriginX: { value: makeRevealUniformArrays(0) },
+      uSphereOriginY: { value: makeRevealUniformArrays(0) },
+      uSphereOriginZ: { value: makeRevealUniformArrays(0) },
+      uSphereRadius: { value: makeRevealUniformArrays(0.0001) },
+      uSphereFeather: { value: makeRevealUniformArrays(0.12) },
+      uClipBottomEnabled: { value: makeRevealUniformArrays(0) },
+      uClipBottomY: { value: makeRevealUniformArrays(0) },
       uRevealAffectAlpha: { value: makeRevealUniformArrays(1) },
       uRevealAffectSize: { value: makeRevealUniformArrays(1) },
     };
@@ -434,6 +563,15 @@ export class GaussianSplatRenderer implements SplatRenderer {
     material.uniforms.uRevealBand = uniforms.uRevealBand;
     material.uniforms.uRevealMinY = uniforms.uRevealMinY;
     material.uniforms.uRevealMaxY = uniforms.uRevealMaxY;
+    material.uniforms.uRevealMode = uniforms.uRevealMode;
+    material.uniforms.uSphereEnabled = uniforms.uSphereEnabled;
+    material.uniforms.uSphereOriginX = uniforms.uSphereOriginX;
+    material.uniforms.uSphereOriginY = uniforms.uSphereOriginY;
+    material.uniforms.uSphereOriginZ = uniforms.uSphereOriginZ;
+    material.uniforms.uSphereRadius = uniforms.uSphereRadius;
+    material.uniforms.uSphereFeather = uniforms.uSphereFeather;
+    material.uniforms.uClipBottomEnabled = uniforms.uClipBottomEnabled;
+    material.uniforms.uClipBottomY = uniforms.uClipBottomY;
     material.uniforms.uRevealAffectAlpha = uniforms.uRevealAffectAlpha;
     material.uniforms.uRevealAffectSize = uniforms.uRevealAffectSize;
 
@@ -504,8 +642,20 @@ export class GaussianSplatRenderer implements SplatRenderer {
     params: SplatRevealParams,
     bounds: SplatRevealBounds,
   ): void {
-    const range = Math.max(0.0001, bounds.maxY - bounds.minY);
-    const revealProgress = Math.min(1, Math.max(0, (params.revealY - bounds.minY) / range));
+    let revealProgress = 1;
+    if (params.mode === 'bottomSphere') {
+      const box = new THREE.Box3().setFromObject(root);
+      if (!box.isEmpty()) {
+        const maxRadius = Math.max(
+          params.sphereOrigin.distanceTo(box.max),
+          params.sphereOrigin.distanceTo(box.min),
+        );
+        revealProgress = Math.min(1, Math.max(0, params.sphereRadius / Math.max(0.0001, maxRadius)));
+      }
+    } else {
+      const range = Math.max(0.0001, bounds.maxY - bounds.minY);
+      revealProgress = Math.min(1, Math.max(0, (params.revealY - bounds.minY) / range));
+    }
     const sceneRoot = root as RevealSceneObject;
     if (typeof sceneRoot.opacity === 'number') {
       sceneRoot.opacity = params.enabled && params.affectAlpha ? revealProgress : 1;
@@ -535,6 +685,7 @@ export class GaussianSplatRenderer implements SplatRenderer {
     return new GaussianSplats3D.Viewer({
       selfDrivenMode: false,
       useBuiltInControls: false,
+      dynamicScene: true,
       renderer: context.renderer,
       camera: context.camera,
       threeScene: context.scene,
@@ -572,7 +723,7 @@ export class GaussianSplatRenderer implements SplatRenderer {
 function injectRevealIntoVertexShader(source: string): { shader: string } {
   let shader = source;
   if (!shader.includes('varying float vRevealWorldY;')) {
-    shader = `varying float vRevealWorldY;\nvarying float vRevealSceneIndex;\n${shader}`;
+    shader = `varying float vRevealWorldY;\nvarying vec3 vRevealWorldPos;\nvarying float vRevealSceneIndex;\n${shader}`;
   }
 
   if (shader.includes('uint sceneIndex = uint(0);')) {
@@ -590,7 +741,19 @@ function injectRevealIntoVertexShader(source: string): { shader: string } {
   if (shader.includes('vec3 splatCenter = uintBitsToFloat(uvec3(sampledCenterColor.gba));')) {
     shader = shader.replace(
       'vec3 splatCenter = uintBitsToFloat(uvec3(sampledCenterColor.gba));',
-      'vec3 splatCenter = uintBitsToFloat(uvec3(sampledCenterColor.gba));\n            vRevealWorldY = splatCenter.y;',
+      'vec3 splatCenter = uintBitsToFloat(uvec3(sampledCenterColor.gba));\n            vRevealWorldY = splatCenter.y;\n            vRevealWorldPos = splatCenter;',
+    );
+  }
+  if (shader.includes('mat4 transformModelViewMatrix = viewMatrix * transform;')) {
+    shader = shader.replace(
+      'mat4 transformModelViewMatrix = viewMatrix * transform;',
+      'mat4 transformModelViewMatrix = viewMatrix * transform;\n                vec3 revealWorldCenter = (transform * vec4(splatCenter, 1.0)).xyz;\n                vRevealWorldPos = revealWorldCenter;\n                vRevealWorldY = revealWorldCenter.y;',
+    );
+  }
+  if (shader.includes('mat4 transformModelViewMatrix = modelViewMatrix;')) {
+    shader = shader.replace(
+      'mat4 transformModelViewMatrix = modelViewMatrix;',
+      'mat4 transformModelViewMatrix = modelViewMatrix;\n                vec3 revealWorldCenter = (modelMatrix * vec4(splatCenter, 1.0)).xyz;\n                vRevealWorldPos = revealWorldCenter;\n                vRevealWorldY = revealWorldCenter.y;',
     );
   }
 
@@ -629,7 +792,7 @@ function injectInteriorIntoVertexShader(source: string): { shader: string } {
 function injectRevealIntoFragmentShader(source: string): { shader: string } {
   let shader = source;
   if (!shader.includes('varying float vRevealWorldY;')) {
-    shader = `varying float vRevealWorldY;\nvarying float vRevealSceneIndex;\n${shader}`;
+    shader = `varying float vRevealWorldY;\nvarying vec3 vRevealWorldPos;\nvarying float vRevealSceneIndex;\n${shader}`;
   }
   if (!shader.includes('uniform float uRevealEnabled[32];')) {
     shader =
@@ -638,6 +801,15 @@ function injectRevealIntoFragmentShader(source: string): { shader: string } {
       `uniform float uRevealBand[32];\n` +
       `uniform float uRevealMinY[32];\n` +
       `uniform float uRevealMaxY[32];\n` +
+      `uniform float uRevealMode[32];\n` +
+      `uniform float uSphereEnabled[32];\n` +
+      `uniform float uSphereOriginX[32];\n` +
+      `uniform float uSphereOriginY[32];\n` +
+      `uniform float uSphereOriginZ[32];\n` +
+      `uniform float uSphereRadius[32];\n` +
+      `uniform float uSphereFeather[32];\n` +
+      `uniform float uClipBottomEnabled[32];\n` +
+      `uniform float uClipBottomY[32];\n` +
       `uniform float uRevealAffectAlpha[32];\n` +
       `uniform float uRevealAffectSize[32];\n` +
       shader;
@@ -646,10 +818,24 @@ function injectRevealIntoFragmentShader(source: string): { shader: string } {
   const revealSnippet =
     '\n  int revealScene = int(vRevealSceneIndex + 0.5);\n' +
     '  revealScene = clamp(revealScene, 0, 31);\n' +
-    '  float revealBand = max(0.0001, uRevealBand[revealScene]);\n' +
-    '  float revealRamp = smoothstep(uRevealY[revealScene] - revealBand, uRevealY[revealScene] + revealBand, vRevealWorldY);\n' +
-    '  if (uRevealEnabled[revealScene] > 0.5 && uRevealAffectAlpha[revealScene] > 0.5) {\n' +
-    '    gl_FragColor.a *= revealRamp;\n' +
+    '  if (uClipBottomEnabled[revealScene] > 0.5 && vRevealWorldY < uClipBottomY[revealScene]) {\n' +
+    '    discard;\n' +
+    '  }\n' +
+    '  float revealAlpha = 1.0;\n' +
+    '  if (uRevealEnabled[revealScene] > 0.5) {\n' +
+    '    if (uRevealMode[revealScene] < 0.5) {\n' +
+    '      float revealBand = max(0.0001, uRevealBand[revealScene]);\n' +
+    '      revealAlpha = smoothstep(uRevealY[revealScene] - revealBand, uRevealY[revealScene] + revealBand, vRevealWorldY);\n' +
+    '    } else if (uSphereEnabled[revealScene] > 0.5) {\n' +
+    '      vec3 sphereOrigin = vec3(uSphereOriginX[revealScene], uSphereOriginY[revealScene], uSphereOriginZ[revealScene]);\n' +
+    '      float sphereDist = distance(vRevealWorldPos, sphereOrigin);\n' +
+    '      float feather = max(0.0001, uSphereFeather[revealScene]);\n' +
+      '      revealAlpha = smoothstep(uSphereRadius[revealScene] - feather, uSphereRadius[revealScene] + feather, sphereDist);\n' +
+      '      revealAlpha = 1.0 - revealAlpha;\n' +
+    '    }\n' +
+    '  }\n' +
+    '  if (uRevealAffectAlpha[revealScene] > 0.5) {\n' +
+    '    gl_FragColor.a *= revealAlpha;\n' +
     '  }\n';
 
   if (shader.includes('#include <dithering_fragment>')) {

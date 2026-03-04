@@ -20,6 +20,7 @@ declare module '@mkkellogg/gaussian-splats-3d' {
   export interface ViewerOptions {
     selfDrivenMode?: boolean;
     useBuiltInControls?: boolean;
+    dynamicScene?: boolean;
     renderer?: THREE.WebGLRenderer;
     camera?: THREE.Camera;
     threeScene?: THREE.Scene;
@@ -45,6 +46,7 @@ declare module '@mkkellogg/gaussian-splats-3d' {
   export interface SplatBufferHandle {
     getSplatCount(): number;
     getSplatCenter(index: number, outCenter: THREE.Vector3, transform?: THREE.Matrix4): void;
+    getSplatColor(index: number, outColor: THREE.Vector4): void;
     sceneCenter?: THREE.Vector3;
   }
 

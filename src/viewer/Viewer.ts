@@ -7,9 +7,12 @@ import {
 import { AnnotationPersistence } from '../annotations/AnnotationPersistence';
 import { InteriorViewConfig, SceneConfig } from '../config/schema';
 import { GaussianSplatRenderer } from '../renderers/GaussianSplatRenderer';
+import { SplatHandle } from '../renderers/types';
 import { InputBindings } from './InputBindings';
 import { CameraController } from './CameraController';
 import { SceneManager, SplatToggleItem } from './SceneManager';
+import { ParticleIntroController } from './ParticleIntroController';
+import { easeInOutCubic } from '../utils/easing';
 
 export interface ViewerUi {
   setLoading(loading: boolean, message?: string): void;
@@ -47,6 +50,7 @@ export class Viewer {
   private readonly inputBindings: InputBindings;
   private readonly annotationManager: AnnotationManager;
   private readonly annotationPersistence = new AnnotationPersistence();
+  private readonly particleIntroController = new ParticleIntroController(this.scene);
   private readonly resizeObserver: ResizeObserver;
 
   private activeSceneId = '';
@@ -57,11 +61,25 @@ export class Viewer {
   private pendingResizeSync = false;
   private queuedSelectionId: string | null = null;
   private processingSelection = false;
+  private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  private autorotateOverride: boolean | null = null;
+  private idleRotateResumeTimer = 0;
+  private currentIdleRotateSpeed = 0.35;
+  private introInProgress: Promise<void> | null = null;
+  private readonly onUserInteraction = (): void => {
+    if (!this.autoRotate) {
+      return;
+    }
+    this.cameraController.setAutoRotate(false, this.currentIdleRotateSpeed);
+    this.scheduleIdleResume(1800);
+  };
 
   constructor(
     private readonly container: HTMLElement,
     private readonly ui: ViewerUi,
+    options: { embedMode?: boolean; autorotateOverride?: boolean | null } = {},
   ) {
+    this.autorotateOverride = options.autorotateOverride ?? null;
     this.webglRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.webglRenderer.setSize(container.clientWidth, container.clientHeight);
     this.webglRenderer.setAnimationLoop(this.onFrame);
@@ -112,7 +130,7 @@ export class Viewer {
       },
     });
 
-    this.scene.background = new THREE.Color('#0b0e14');
+    this.scene.background = new THREE.Color('#ffffff');
     const ambient = new THREE.AmbientLight('#ffffff', 0.8);
     this.scene.add(ambient);
 
@@ -121,6 +139,7 @@ export class Viewer {
     window.addEventListener('resize', this.onResize);
     window.visualViewport?.addEventListener('resize', this.onResize);
     window.visualViewport?.addEventListener('scroll', this.onResize);
+    this.bindIdleInteraction();
   }
 
   async init(sceneId: string): Promise<void> {
@@ -157,7 +176,7 @@ export class Viewer {
         });
       }
       this.ui.setLoading(false);
-      await this.sceneManager.revealActiveScene();
+      await this.playIntro();
       this.annotationManager.configure(mergedConfig);
     } catch (error) {
       this.ui.setLoading(false);
@@ -187,8 +206,13 @@ export class Viewer {
       return this.autoRotate;
     }
     this.autoRotate = !this.autoRotate;
-    this.cameraController.setAutoRotate(this.autoRotate);
+    this.cameraController.setAutoRotate(this.autoRotate, this.currentIdleRotateSpeed);
     return this.autoRotate;
+  }
+
+  setAutoRotateExplicit(enabled: boolean): void {
+    this.autoRotate = enabled;
+    this.cameraController.setAutoRotate(enabled, this.currentIdleRotateSpeed);
   }
 
   setFullscreen(enabled: boolean): void {
@@ -216,6 +240,12 @@ export class Viewer {
     this.activeConfig = null;
     this.fittedHome = null;
     this.inputBindings.dispose();
+    this.clearIdleResumeTimer();
+    const node = this.webglRenderer.domElement;
+    node.removeEventListener('pointerdown', this.onUserInteraction);
+    node.removeEventListener('wheel', this.onUserInteraction);
+    node.removeEventListener('touchstart', this.onUserInteraction);
+    this.particleIntroController.dispose();
     this.annotationManager.dispose();
     void this.sceneManager.dispose();
     this.cameraController.dispose();
@@ -230,8 +260,10 @@ export class Viewer {
   private applySceneConfig(config: SceneConfig): void {
     this.cameraController.applyLimits(config.camera.limits, config.ui.enablePan);
     this.fitCameraToContent(config);
-    this.autoRotate = config.ui.autorotateDefaultOn && config.ui.enableAutorotate;
-    this.cameraController.setAutoRotate(this.autoRotate);
+    this.currentIdleRotateSpeed = config.presentation.idleRotateSpeed;
+    const defaultAutoRotate = this.autorotateOverride ?? (config.ui.autorotateDefaultOn && config.ui.enableAutorotate);
+    this.autoRotate = defaultAutoRotate;
+    this.cameraController.setAutoRotate(false, this.currentIdleRotateSpeed);
   }
 
   private enqueueSplatSelection(id: string): void {
@@ -306,6 +338,207 @@ export class Viewer {
     this.splatRenderer.render();
   };
 
+  async playIntro(): Promise<void> {
+    if (this.introInProgress) {
+      return this.introInProgress;
+    }
+    this.introInProgress = this.runIntroSequence();
+    try {
+      await this.introInProgress;
+    } finally {
+      this.introInProgress = null;
+    }
+  }
+
+  private async runIntroSequence(): Promise<void> {
+    if (!this.activeConfig) {
+      return;
+    }
+    this.cameraController.setAutoRotate(false, this.currentIdleRotateSpeed);
+    await this.sceneManager.resetActiveRevealStart();
+    const activeHandle = this.sceneManager.getActiveHandle();
+    const reveal = this.activeConfig.reveal;
+    const revealDurationMs = this.getRevealDurationMs(reveal);
+    let particleSource: THREE.Vector3[] = [];
+    let particleColors: Float32Array | null = null;
+    let particleDurationMs = 0;
+    if (
+      activeHandle &&
+      !this.reducedMotion &&
+      reveal.particleIntro.durationMs > 0 &&
+      reveal.particleIntro.particleCount > 0
+    ) {
+      const sampleCloud = this.splatRenderer.getSplatSampleCloud(activeHandle.id, {
+        maxSamples: reveal.particleIntro.particleCount,
+        randomize: true,
+        space: 'local',
+        includeColors: true,
+      });
+      particleSource = sampleCloud.points;
+      particleColors = sampleCloud.colors ?? null;
+      if (particleSource.length > 0) {
+        particleDurationMs = Math.max(120, reveal.particleIntro.durationMs);
+      }
+    }
+
+    const spinPromises: Promise<void>[] = [];
+    const spinStartedIds = new Set<string>();
+    const activeOrientation =
+      activeHandle && this.activeConfig ? this.computeIntroOrientation(activeHandle, this.activeConfig) : null;
+    if (activeHandle && activeOrientation) {
+      activeHandle.object3D.quaternion.copy(activeOrientation.start);
+      spinPromises.push(
+        this.animateIntroSpin(
+          activeHandle,
+          activeOrientation.end,
+          activeOrientation.spinDegrees,
+          revealDurationMs + particleDurationMs,
+        ),
+      );
+      spinStartedIds.add(activeHandle.id);
+    }
+
+    if (activeHandle && particleDurationMs > 0) {
+      await this.particleIntroController.play(
+        particleSource,
+        activeHandle.boundsY,
+        {
+          ...reveal.particleIntro,
+          durationMs: particleDurationMs,
+        },
+        this.reducedMotion,
+        {
+          anchor: activeHandle.object3D,
+          sourceColors: particleColors,
+        },
+      );
+    }
+
+    await this.sceneManager.revealActiveScene({
+      reducedMotion: this.reducedMotion,
+      beforeRevealIn: ({ handle, reveal: revealConfig }) => {
+        const spinDuration = this.getRevealDurationMs(revealConfig);
+        if (!spinStartedIds.has(handle.id)) {
+          const orientation = this.computeIntroOrientation(handle, this.activeConfig!);
+          if (orientation) {
+            handle.object3D.quaternion.copy(orientation.start);
+            spinPromises.push(
+              this.animateIntroSpin(
+                handle,
+                orientation.end,
+                orientation.spinDegrees,
+                spinDuration,
+              ),
+            );
+            spinStartedIds.add(handle.id);
+          }
+        }
+        if (import.meta.env.DEV) {
+          console.debug('[intro-spin]', {
+            handleId: handle.id,
+            spinDuration,
+            revealMode: revealConfig.mode,
+            preStarted: spinStartedIds.has(handle.id),
+          });
+        }
+        void this.particleIntroController.cover(
+          this.reducedMotion ? Math.max(280, Math.floor(spinDuration * 0.4)) : spinDuration,
+        );
+      },
+    });
+    if (spinPromises.length > 0) {
+      await Promise.allSettled(spinPromises);
+    }
+    const shouldAutoRotate = this.shouldEnableAutoRotateAfterIntro(this.activeConfig);
+    this.autoRotate = shouldAutoRotate;
+    if (shouldAutoRotate) {
+      const delay = this.activeConfig.presentation.introAutoRotateDelayMs;
+      if (delay <= 0) {
+        this.cameraController.setAutoRotate(true, this.currentIdleRotateSpeed);
+      } else {
+        this.scheduleIdleResume(delay);
+      }
+      return;
+    }
+    this.cameraController.setAutoRotate(false, this.currentIdleRotateSpeed);
+  }
+
+  private async animateIntroSpin(
+    handle: SplatHandle,
+    endQ: THREE.Quaternion,
+    spinDegrees: number,
+    durationMs: number,
+  ): Promise<void> {
+    const duration = Math.max(200, durationMs);
+    const upAxis = new THREE.Vector3(0, 1, 0);
+    const yaw = new THREE.Quaternion();
+    const compose = (degrees: number): void => {
+      yaw.setFromAxisAngle(upAxis, THREE.MathUtils.degToRad(degrees));
+      handle.object3D.quaternion.copy(endQ).multiply(yaw);
+    };
+    compose(spinDegrees);
+
+    const start = performance.now();
+    await new Promise<void>((resolve) => {
+      const step = (now: number): void => {
+        const t = Math.min(1, (now - start) / duration);
+        const eased = easeInOutCubic(t);
+        compose(spinDegrees * (1 - eased));
+        if (t >= 1) {
+          handle.object3D.quaternion.copy(endQ);
+          resolve();
+          return;
+        }
+        requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
+  }
+
+  private computeIntroOrientation(
+    handle: SplatHandle,
+    config: SceneConfig,
+  ): { start: THREE.Quaternion; end: THREE.Quaternion; spinDegrees: number } | null {
+    const spinDegrees = config.presentation.introSpinDegrees;
+    if (Math.abs(spinDegrees) < 0.001) {
+      return null;
+    }
+    const asset = config.assets.find((entry) => entry.id === handle.id);
+    if (!asset) {
+      return null;
+    }
+    const end = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(
+        THREE.MathUtils.degToRad(asset.transform.rotation[0]),
+        THREE.MathUtils.degToRad(asset.transform.rotation[1]),
+        THREE.MathUtils.degToRad(asset.transform.rotation[2]),
+      ),
+    );
+    const yaw = new THREE.Quaternion().setFromAxisAngle(
+      new THREE.Vector3(0, 1, 0),
+      THREE.MathUtils.degToRad(spinDegrees),
+    );
+    const start = end.clone().multiply(yaw);
+    return { start, end, spinDegrees };
+  }
+
+  private getRevealDurationMs(reveal: SceneConfig['reveal']): number {
+    return reveal.mode === 'bottomSphere' ? reveal.bottomSphere.durationMs : reveal.durationMs;
+  }
+
+  private shouldEnableAutoRotateAfterIntro(config: SceneConfig): boolean {
+    if (!config.ui.enableAutorotate) {
+      return false;
+    }
+    if (this.autorotateOverride !== null) {
+      return this.autorotateOverride;
+    }
+    if (config.presentation.mode === 'embedHero') {
+      return true;
+    }
+    return config.ui.autorotateDefaultOn;
+  }
+
   private onResize = (): void => {
     this.scheduleResizeSync();
   };
@@ -334,6 +567,31 @@ export class Viewer {
     if (this.activeConfig) {
       this.fitCameraToContent(this.activeConfig);
     }
+  }
+
+  private bindIdleInteraction(): void {
+    const node = this.webglRenderer.domElement;
+    node.addEventListener('pointerdown', this.onUserInteraction, { passive: true });
+    node.addEventListener('wheel', this.onUserInteraction, { passive: true });
+    node.addEventListener('touchstart', this.onUserInteraction, { passive: true });
+  }
+
+  private scheduleIdleResume(delayMs: number): void {
+    this.clearIdleResumeTimer();
+    if (!this.autoRotate) {
+      return;
+    }
+    this.idleRotateResumeTimer = window.setTimeout(() => {
+      this.cameraController.setAutoRotate(true, this.currentIdleRotateSpeed);
+    }, Math.max(0, delayMs));
+  }
+
+  private clearIdleResumeTimer(): void {
+    if (!this.idleRotateResumeTimer) {
+      return;
+    }
+    window.clearTimeout(this.idleRotateResumeTimer);
+    this.idleRotateResumeTimer = 0;
   }
 
   private async saveAnnotations(): Promise<void> {

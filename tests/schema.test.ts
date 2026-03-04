@@ -37,6 +37,12 @@ describe('validateSceneConfig', () => {
       expect(result.data.reveal.enabled).toBe(true);
       expect(result.data.reveal.mode).toBe('yRamp');
       expect(result.data.reveal.durationMs).toBe(2800);
+      expect(result.data.reveal.particleIntro.particleCount).toBe(9000);
+      expect(result.data.reveal.bottomSphere.durationMs).toBe(1900);
+      expect(result.data.reveal.bottomClip.enabled).toBe(false);
+      expect(result.data.reveal.bottomClip.offset).toBe(0);
+      expect(result.data.presentation.mode).toBe('standard');
+      expect(result.data.presentation.introSpinDegrees).toBe(0);
       expect(result.data.interiorView.enabled).toBe(false);
       expect(result.data.interiorView.radius).toBe(0.45);
       expect(result.data.annotations.enabled).toBe(false);
@@ -112,6 +118,25 @@ describe('validateSceneConfig', () => {
         mode: 'yRamp',
         durationMs: 0,
         band: -1,
+        particleIntro: {
+          durationMs: 0,
+          particleCount: 0,
+          spread: -1,
+          size: 0,
+          color: '#fff',
+          blend: 'normal',
+        },
+        bottomSphere: {
+          durationMs: 0,
+          feather: 0,
+          originYOffset: 0,
+          maxRadiusScale: 0,
+        },
+      },
+      presentation: {
+        mode: 'embedHero',
+        introAutoRotateDelayMs: -1,
+        idleRotateSpeed: 0,
       },
     };
 
@@ -120,6 +145,88 @@ describe('validateSceneConfig', () => {
     if (!result.ok) {
       expect(result.errors.join(' ')).toContain('reveal.durationMs');
       expect(result.errors.join(' ')).toContain('reveal.band');
+      expect(result.errors.join(' ')).toContain('particleIntro.durationMs');
+      expect(result.errors.join(' ')).toContain('particleIntro.particleCount');
+      expect(result.errors.join(' ')).toContain('particleIntro.spread');
+      expect(result.errors.join(' ')).toContain('particleIntro.size');
+      expect(result.errors.join(' ')).toContain('bottomSphere.durationMs');
+      expect(result.errors.join(' ')).toContain('bottomSphere.feather');
+      expect(result.errors.join(' ')).toContain('bottomSphere.maxRadiusScale');
+      expect(result.errors.join(' ')).toContain('presentation.introAutoRotateDelayMs');
+      expect(result.errors.join(' ')).toContain('presentation.idleRotateSpeed');
+    }
+  });
+
+  it('accepts particleIntro reveal and embedHero presentation mode', () => {
+    const valid = {
+      id: 'cake',
+      title: 'Cake',
+      assets: [
+        {
+          id: 'cake_main',
+          src: '/x.splat',
+          transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+          visibleDefault: true,
+        },
+      ],
+      camera: {
+        home: { position: [0, 0, 2], target: [0, 0, 0], fov: 50 },
+        limits: { minDistance: 0.4, maxDistance: 4, minPolarAngle: 0.1, maxPolarAngle: 2.9 },
+        transitionMs: 500,
+      },
+      ui: {
+        enableFullscreen: true,
+        enableAutorotate: true,
+        enableReset: true,
+        enablePan: true,
+        autorotateDefaultOn: false,
+      },
+      transitions: { sceneFadeMs: 300 },
+      reveal: {
+        enabled: true,
+        mode: 'bottomSphere',
+        durationMs: 1500,
+        band: 0.1,
+        ease: 'easeInOut',
+        affectAlpha: true,
+        affectSize: true,
+        startPadding: 0,
+        endPadding: 0,
+        particleIntro: {
+          durationMs: 1200,
+          particleCount: 1200,
+          spread: 0.4,
+          size: 0.02,
+          color: '#ffd9a4',
+          blend: 'additive',
+        },
+        bottomSphere: {
+          durationMs: 1600,
+          feather: 0.2,
+          originYOffset: -0.05,
+          maxRadiusScale: 1.1,
+        },
+        bottomClip: {
+          enabled: true,
+          offset: 0.03,
+        },
+      },
+      presentation: {
+        mode: 'embedHero',
+        introAutoRotateDelayMs: 250,
+        idleRotateSpeed: 0.25,
+      },
+    };
+
+    const result = validateSceneConfig(valid);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.reveal.mode).toBe('bottomSphere');
+      expect(result.data.presentation.mode).toBe('embedHero');
+      expect(result.data.reveal.particleIntro.blend).toBe('additive');
+      expect(result.data.reveal.bottomSphere.maxRadiusScale).toBe(1.1);
+      expect(result.data.reveal.bottomClip.enabled).toBe(true);
+      expect(result.data.reveal.bottomClip.offset).toBe(0.03);
     }
   });
 

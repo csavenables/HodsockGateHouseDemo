@@ -20,7 +20,7 @@ body,
   height: 100dvh;
   min-height: -webkit-fill-available;
   overflow: hidden;
-  background: radial-gradient(circle at 20% 20%, #1b243a 0%, var(--bg) 60%);
+  background: #fff;
   color: var(--text);
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
@@ -29,6 +29,10 @@ body,
   display: grid;
   grid-template-rows: auto 1fr auto auto;
   height: 100%;
+}
+
+.app-shell.app-shell-embed {
+  grid-template-rows: 1fr;
 }
 
 .app-header {
@@ -56,6 +60,11 @@ body,
 .viewer-root {
   position: relative;
   min-height: 0;
+}
+
+.app-shell.app-shell-embed .viewer-root {
+  width: 100vw;
+  height: 100dvh;
 }
 
 .viewer-host {
@@ -310,7 +319,27 @@ body,
   z-index: 2;
   pointer-events: none;
   opacity: 0;
-  background: #000;
+  background: #fff;
+}
+
+.replay-button {
+  position: absolute;
+  right: max(0.8rem, env(safe-area-inset-right));
+  bottom: max(0.8rem, env(safe-area-inset-bottom));
+  z-index: 6;
+  border: 1px solid rgb(255 255 255 / 40%);
+  background: rgb(12 20 30 / 70%);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 0.42rem 0.72rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+}
+
+.replay-button:hover {
+  background: rgb(22 35 51 / 82%);
 }
 
 .app-footer {
@@ -362,7 +391,17 @@ body,
   display: grid;
   place-content: center;
   gap: 0.85rem;
-  background: rgb(11 14 20 / 70%);
+  background: rgb(255 255 255 / 72%);
+}
+
+.app-shell.app-shell-embed .loader {
+  background: rgb(255 255 255 / 42%);
+}
+
+.app-shell.app-shell-embed .loader-spinner {
+  width: 28px;
+  height: 28px;
+  border-width: 2px;
 }
 
 .loader-spinner {
@@ -377,7 +416,7 @@ body,
 
 .loader-message {
   margin: 0;
-  color: var(--muted);
+  color: #3c465a;
   font-size: 0.85rem;
 }
 

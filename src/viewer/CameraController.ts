@@ -69,9 +69,9 @@ export class CameraController {
     this.applyEffectiveControls();
   }
 
-  setAutoRotate(enabled: boolean): void {
+  setAutoRotate(enabled: boolean, speed = 1): void {
     this.controls.autoRotate = enabled;
-    this.controls.autoRotateSpeed = 1;
+    this.controls.autoRotateSpeed = speed;
   }
 
   resetToHome(home: CameraHomeConfig, durationMs: number): void {

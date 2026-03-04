@@ -10,6 +10,8 @@
 - Multi-splat scene loading with supported formats: `.ply`, `.splat`, `.ksplat`, `.spz`.
 - Fade-out/fade-in scene transitions and basic loading UX.
 - Per-splat bottom-up reveal / downward dissolve driven by `scene.json` reveal config.
+- Optional `particleIntro` reveal mode for hero-style splat intros.
+- Embed mode (`?embed=1`) for Wix/iframe usage with minimal UI.
 - Scene switching via `public/scenes/manifest.json` (no code changes required to add scenes).
 - Minimal responsive toolbar for reset, fullscreen, and auto-rotate.
 - Friendly failures for invalid/unsupported scene assets.
@@ -47,6 +49,17 @@ npm run preview
 3. Update `public/scenes/<clientSceneId>/scene.json`.
 4. Add the new scene to `public/scenes/manifest.json`.
 5. Load with query param, e.g. `?scene=clientSceneId`.
+
+Default startup scene is `cake`.
+
+## Runtime Query Params
+
+- `scene=<sceneId>`: pick scene id from `public/scenes/manifest.json`.
+- `embed=1`: hero embed mode (hides shell controls/chrome).
+- `controls=1|0`: force show/hide visible controls.
+- `replayButton=1|0`: show/hide floating replay button in embed mode (default `1` for embeds).
+- `autorotate=1|0`: override scene default auto-rotate behavior.
+- `parentOrigin=https://your-domain.com`: lock postMessage origin for embedded control.
 
 ## Reveal Config (Optional)
 

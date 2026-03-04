@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { loadSceneConfig } from '../config/loadSceneConfig';
 import { InteriorViewConfig, RevealConfig, SceneConfig } from '../config/schema';
 import { REVEAL_CONFIG_DEFAULTS, SplatHandle, SplatRenderer } from '../renderers/types';
@@ -15,6 +16,15 @@ export interface SceneManagerEvents {
   onLoading(message: string): void;
   onReady(config: SceneConfig): void;
   onItemsChanged(items: SplatToggleItem[]): void;
+}
+
+export interface RevealHookOptions {
+  reducedMotion?: boolean;
+  beforeRevealIn?: (ctx: {
+    handle: SplatHandle;
+    config: SceneConfig;
+    reveal: RevealConfig;
+  }) => Promise<void> | void;
 }
 
 export class SceneLoadError extends Error {
@@ -41,6 +51,17 @@ export class SceneManager {
 
   get config(): SceneConfig | null {
     return this.activeConfig;
+  }
+
+  getActiveSplatId(): string | null {
+    return this.currentActiveId;
+  }
+
+  getActiveHandle(): SplatHandle | null {
+    if (!this.currentActiveId) {
+      return null;
+    }
+    return this.handleById.get(this.currentActiveId) ?? null;
   }
 
   async loadScene(sceneId: string): Promise<SceneConfig> {
@@ -108,10 +129,11 @@ export class SceneManager {
     return config;
   }
 
-  async revealActiveScene(): Promise<void> {
+  async revealActiveScene(options: RevealHookOptions = {}): Promise<void> {
     if (!this.activeConfig) {
       return;
     }
+    const reveal = this.activeConfig.reveal;
     await Promise.all(
       this.activeHandles.map(async (handle) => {
         const item = this.activeItems.find((entry) => entry.id === handle.id);
@@ -120,9 +142,32 @@ export class SceneManager {
           return;
         }
         this.renderer.setVisible(handle.id, true);
-        await this.revealController.revealIn(handle, handle.boundsY, this.activeConfig!.reveal);
+        if (options.beforeRevealIn) {
+          await options.beforeRevealIn({
+            handle,
+            config: this.activeConfig!,
+            reveal,
+          });
+        }
+        await this.revealController.revealIn(handle, handle.boundsY, reveal);
       }),
     );
+  }
+
+  async resetActiveRevealStart(): Promise<void> {
+    if (!this.activeConfig) {
+      return;
+    }
+    const activeHandles: SplatHandle[] = [];
+    for (const handle of this.activeHandles) {
+      const item = this.activeItems.find((entry) => entry.id === handle.id);
+      if (!item?.active) {
+        continue;
+      }
+      this.renderer.setVisible(handle.id, true);
+      activeHandles.push(handle);
+    }
+    await this.prepareRevealStart(activeHandles, this.activeConfig.reveal);
   }
 
   getSplatItems(): SplatToggleItem[] {
@@ -217,14 +262,31 @@ export class SceneManager {
   private async prepareRevealStart(handles: SplatHandle[], reveal: RevealConfig): Promise<void> {
     for (const handle of handles) {
       const minY = handle.boundsY.minY + reveal.startPadding;
+      const box = handle.sampledBounds
+        ? new THREE.Box3(handle.sampledBounds.min.clone(), handle.sampledBounds.max.clone())
+        : new THREE.Box3().setFromObject(handle.object3D);
+      const sphereOrigin = box.isEmpty()
+        ? new THREE.Vector3(0, minY + reveal.bottomSphere.originYOffset, 0)
+        : new THREE.Vector3(
+            (box.min.x + box.max.x) * 0.5,
+            box.min.y + reveal.bottomSphere.originYOffset,
+            (box.min.z + box.max.z) * 0.5,
+          );
       handle.setRevealBounds(handle.boundsY);
       handle.setRevealParams({
         enabled: reveal.enabled,
+        mode: reveal.mode === 'bottomSphere' ? 'bottomSphere' : 'yRamp',
         revealY: minY,
         band: reveal.band,
+        sphereOrigin,
+        sphereRadius: 0.0001,
+        sphereFeather: reveal.bottomSphere.feather,
+        clipBottomEnabled: reveal.bottomClip.enabled,
+        clipBottomY: handle.boundsY.minY + reveal.bottomClip.offset,
         affectAlpha: reveal.affectAlpha,
         affectSize: reveal.affectSize,
       });
+      this.revealController.primeRevealInStart(handle, reveal);
     }
   }
 

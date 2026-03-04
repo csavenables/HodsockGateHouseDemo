@@ -39,8 +39,30 @@ export interface TransitionConfig {
   fadeColour?: string;
 }
 
-export type RevealMode = 'yRamp';
+export type RevealMode = 'yRamp' | 'particleIntro' | 'bottomSphere';
 export type RevealEase = 'easeInOut' | 'linear';
+export type ParticleBlendMode = 'additive' | 'normal';
+
+export interface ParticleIntroConfig {
+  durationMs: number;
+  particleCount: number;
+  spread: number;
+  size: number;
+  color: string;
+  blend: ParticleBlendMode;
+}
+
+export interface BottomSphereRevealConfig {
+  durationMs: number;
+  feather: number;
+  originYOffset: number;
+  maxRadiusScale: number;
+}
+
+export interface BottomClipConfig {
+  enabled: boolean;
+  offset: number;
+}
 
 export interface RevealConfig {
   enabled: boolean;
@@ -52,6 +74,9 @@ export interface RevealConfig {
   affectSize: boolean;
   startPadding: number;
   endPadding: number;
+  particleIntro: ParticleIntroConfig;
+  bottomSphere: BottomSphereRevealConfig;
+  bottomClip: BottomClipConfig;
 }
 
 export interface InteriorViewConfig {
@@ -107,6 +132,13 @@ export interface AnnotationsConfig {
   ui: AnnotationUiConfig;
 }
 
+export interface PresentationConfig {
+  mode: 'standard' | 'embedHero';
+  introAutoRotateDelayMs: number;
+  idleRotateSpeed: number;
+  introSpinDegrees: number;
+}
+
 export interface SceneConfig {
   id: string;
   title: string;
@@ -119,6 +151,7 @@ export interface SceneConfig {
   ui: UiConfig;
   transitions: TransitionConfig;
   reveal: RevealConfig;
+  presentation: PresentationConfig;
   interiorView: InteriorViewConfig;
   annotations: AnnotationsConfig;
 }
@@ -259,6 +292,10 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
   if (revealValue !== undefined && !isObject(revealValue)) {
     errors.push('"reveal" must be an object when provided.');
   }
+  const presentationValue = raw.presentation;
+  if (presentationValue !== undefined && !isObject(presentationValue)) {
+    errors.push('"presentation" must be an object when provided.');
+  }
   const interiorValue = raw.interiorView;
   if (interiorValue !== undefined && !isObject(interiorValue)) {
     errors.push('"interiorView" must be an object when provided.');
@@ -269,6 +306,22 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
   }
   const transitionsObject = isObject(transitionsValue) ? transitionsValue : {};
   const revealObject = isObject(revealValue) ? revealValue : {};
+  const presentationObject = isObject(presentationValue) ? presentationValue : {};
+  const particleIntroValue = revealObject.particleIntro;
+  if (particleIntroValue !== undefined && !isObject(particleIntroValue)) {
+    errors.push('"reveal.particleIntro" must be an object when provided.');
+  }
+  const bottomSphereValue = revealObject.bottomSphere;
+  if (bottomSphereValue !== undefined && !isObject(bottomSphereValue)) {
+    errors.push('"reveal.bottomSphere" must be an object when provided.');
+  }
+  const bottomClipValue = revealObject.bottomClip;
+  if (bottomClipValue !== undefined && !isObject(bottomClipValue)) {
+    errors.push('"reveal.bottomClip" must be an object when provided.');
+  }
+  const particleIntroObject = isObject(particleIntroValue) ? particleIntroValue : {};
+  const bottomSphereObject = isObject(bottomSphereValue) ? bottomSphereValue : {};
+  const bottomClipObject = isObject(bottomClipValue) ? bottomClipValue : {};
   const interiorObject = isObject(interiorValue) ? interiorValue : {};
   const annotationsObject = isObject(annotationsValue) ? annotationsValue : {};
   if (annotationsObject.ui !== undefined && !isObject(annotationsObject.ui)) {
@@ -390,7 +443,12 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
     },
     reveal: {
       enabled: typeof revealObject.enabled === 'boolean' ? revealObject.enabled : true,
-      mode: revealObject.mode === 'yRamp' ? 'yRamp' : 'yRamp',
+      mode:
+        revealObject.mode === 'yRamp' ||
+        revealObject.mode === 'particleIntro' ||
+        revealObject.mode === 'bottomSphere'
+          ? revealObject.mode
+          : 'yRamp',
       durationMs: isNumber(revealObject.durationMs) ? revealObject.durationMs : 2800,
       band: isNumber(revealObject.band) ? revealObject.band : 0.12,
       ease:
@@ -401,6 +459,39 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
       affectSize: typeof revealObject.affectSize === 'boolean' ? revealObject.affectSize : true,
       startPadding: isNumber(revealObject.startPadding) ? revealObject.startPadding : 0,
       endPadding: isNumber(revealObject.endPadding) ? revealObject.endPadding : 0,
+      particleIntro: {
+        durationMs: isNumber(particleIntroObject.durationMs) ? particleIntroObject.durationMs : 1400,
+        particleCount: isNumber(particleIntroObject.particleCount) ? particleIntroObject.particleCount : 9000,
+        spread: isNumber(particleIntroObject.spread) ? particleIntroObject.spread : 0.45,
+        size: isNumber(particleIntroObject.size) ? particleIntroObject.size : 0.018,
+        color: typeof particleIntroObject.color === 'string' ? particleIntroObject.color : '#ffdda8',
+        blend:
+          particleIntroObject.blend === 'additive' || particleIntroObject.blend === 'normal'
+            ? particleIntroObject.blend
+            : 'additive',
+      },
+      bottomSphere: {
+        durationMs: isNumber(bottomSphereObject.durationMs) ? bottomSphereObject.durationMs : 1900,
+        feather: isNumber(bottomSphereObject.feather) ? bottomSphereObject.feather : 0.18,
+        originYOffset: isNumber(bottomSphereObject.originYOffset) ? bottomSphereObject.originYOffset : 0,
+        maxRadiusScale: isNumber(bottomSphereObject.maxRadiusScale) ? bottomSphereObject.maxRadiusScale : 1.08,
+      },
+      bottomClip: {
+        enabled: typeof bottomClipObject.enabled === 'boolean' ? bottomClipObject.enabled : false,
+        offset: isNumber(bottomClipObject.offset) ? bottomClipObject.offset : 0,
+      },
+    },
+    presentation: {
+      mode: presentationObject.mode === 'embedHero' ? 'embedHero' : 'standard',
+      introAutoRotateDelayMs: isNumber(presentationObject.introAutoRotateDelayMs)
+        ? presentationObject.introAutoRotateDelayMs
+        : 400,
+      idleRotateSpeed: isNumber(presentationObject.idleRotateSpeed)
+        ? presentationObject.idleRotateSpeed
+        : 0.32,
+      introSpinDegrees: isNumber(presentationObject.introSpinDegrees)
+        ? presentationObject.introSpinDegrees
+        : 0,
     },
     interiorView: {
       enabled: typeof interiorObject.enabled === 'boolean' ? interiorObject.enabled : false,
@@ -449,6 +540,34 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
   }
   if (config.reveal.band <= 0) {
     errors.push('"reveal.band" must be > 0.');
+  }
+  if (config.reveal.particleIntro.durationMs <= 0) {
+    errors.push('"reveal.particleIntro.durationMs" must be > 0.');
+  }
+  if (config.reveal.particleIntro.particleCount <= 0) {
+    errors.push('"reveal.particleIntro.particleCount" must be > 0.');
+  }
+  if (config.reveal.particleIntro.spread < 0) {
+    errors.push('"reveal.particleIntro.spread" must be >= 0.');
+  }
+  if (config.reveal.particleIntro.size <= 0) {
+    errors.push('"reveal.particleIntro.size" must be > 0.');
+  }
+  if (config.reveal.bottomSphere.durationMs <= 0) {
+    errors.push('"reveal.bottomSphere.durationMs" must be > 0.');
+  }
+  if (config.reveal.bottomSphere.feather <= 0) {
+    errors.push('"reveal.bottomSphere.feather" must be > 0.');
+  }
+  if (config.reveal.bottomSphere.maxRadiusScale <= 0) {
+    errors.push('"reveal.bottomSphere.maxRadiusScale" must be > 0.');
+  }
+
+  if (config.presentation.introAutoRotateDelayMs < 0) {
+    errors.push('"presentation.introAutoRotateDelayMs" must be >= 0.');
+  }
+  if (config.presentation.idleRotateSpeed <= 0) {
+    errors.push('"presentation.idleRotateSpeed" must be > 0.');
   }
 
   if (config.interiorView.radius <= 0) {

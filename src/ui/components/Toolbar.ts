@@ -23,15 +23,6 @@ export function createToolbar(parent: HTMLElement, actions: ToolbarActions): Too
     onClick: () => actions.onReset(),
   });
 
-  const autorotateButton = createButton({
-    id: 'btn-autorotate',
-    label: 'Auto Rotate',
-    onClick: () => {
-      const enabled = actions.onToggleAutorotate();
-      autorotateButton.classList.toggle('active', enabled);
-    },
-  });
-
   const fullscreenButton = createButton({
     id: 'btn-fullscreen',
     label: 'Fullscreen',
@@ -44,15 +35,12 @@ export function createToolbar(parent: HTMLElement, actions: ToolbarActions): Too
   });
 
   toolbar.appendChild(resetButton);
-  toolbar.appendChild(autorotateButton);
   toolbar.appendChild(fullscreenButton);
 
   return {
     setConfig(config: SceneConfig): void {
       resetButton.classList.toggle('hidden', !config.ui.enableReset);
-      autorotateButton.classList.toggle('hidden', !config.ui.enableAutorotate);
       fullscreenButton.classList.toggle('hidden', !config.ui.enableFullscreen);
-      autorotateButton.classList.toggle('active', config.ui.autorotateDefaultOn);
     },
   };
 }

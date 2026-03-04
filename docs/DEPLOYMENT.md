@@ -37,3 +37,23 @@ For this repo, the site URL is:
 3. Switch scenes from dropdown.
 4. Test `Reset`, `Auto Rotate`, `Fullscreen`.
 5. Confirm mobile portrait and landscape behavior.
+
+## Wix Embed
+
+Use Wix HTML iframe to embed your hosted viewer URL:
+
+`https://<your-host>/?scene=cake&embed=1&replayButton=1&autorotate=1&parentOrigin=https://<your-wix-domain>`
+
+### Optional PostMessage API
+
+From Wix (HTML component):
+
+- `viewer:playIntro`
+- `viewer:setAutoRotate` with `{ value: true | false }`
+- `viewer:reset`
+
+Viewer emits:
+
+- `viewer:ready` with `{ sceneId }`
+
+For production embeds, set `parentOrigin` to your Wix site origin so incoming messages are origin-locked.

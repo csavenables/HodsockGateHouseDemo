@@ -9,17 +9,31 @@ export interface AppShell extends ViewerUi {
   toolbar: ToolbarController;
 }
 
-export function createAppShell(container: HTMLElement, actions: Parameters<typeof createToolbar>[1]): AppShell {
+export interface AppShellOptions {
+  embedMode?: boolean;
+  controlsVisible?: boolean;
+  replayButtonVisible?: boolean;
+  onReplay?: () => void;
+}
+
+export function createAppShell(
+  container: HTMLElement,
+  actions: Parameters<typeof createToolbar>[1],
+  options: AppShellOptions = {},
+): AppShell {
+  const embedMode = options.embedMode ?? false;
+  const controlsVisible = options.controlsVisible ?? !embedMode;
+  const replayButtonVisible = options.replayButtonVisible ?? embedMode;
   container.innerHTML = `
-    <div class="app-shell">
-      <header class="app-header">
+    <div class="app-shell${embedMode ? ' app-shell-embed' : ''}">
+      <header class="app-header${controlsVisible ? '' : ' hidden'}">
         <h1 class="app-title">3DGSViewerV1</h1>
         <p class="scene-title">Scene</p>
       </header>
       <main class="viewer-root">
         <section class="viewer-host" id="viewer-host"></section>
         <div class="annotation-host" id="annotation-host"></div>
-        <aside class="splat-panel" aria-label="Splat visibility controls">
+        <aside class="splat-panel${controlsVisible ? '' : ' hidden'}" aria-label="Splat visibility controls">
           <h2 class="splat-panel-title">Splats</h2>
           <div class="splat-controls"></div>
           <div class="annotation-editor hidden">
@@ -90,13 +104,16 @@ export function createAppShell(container: HTMLElement, actions: Parameters<typeo
           </div>
         </aside>
         <div class="transition-overlay"></div>
+        <button type="button" class="replay-button${replayButtonVisible ? '' : ' hidden'}" aria-label="Replay intro">
+          Replay
+        </button>
       </main>
       <div class="error-panel hidden" role="alert">
         <h2 class="error-title"></h2>
         <ul class="error-details"></ul>
       </div>
-      <footer class="app-footer">
-        <p>R: Reset | A: Toggle Auto-Rotate</p>
+      <footer class="app-footer${controlsVisible ? '' : ' hidden'}">
+        <p>R: Reset</p>
       </footer>
     </div>
   `;
@@ -112,6 +129,7 @@ export function createAppShell(container: HTMLElement, actions: Parameters<typeo
   const splatControls = container.querySelector<HTMLElement>('.splat-controls');
   const interiorDebug = container.querySelector<HTMLElement>('.interior-debug');
   const annotationEditor = container.querySelector<HTMLElement>('.annotation-editor');
+  const replayButton = container.querySelector<HTMLButtonElement>('.replay-button');
 
   if (
     !viewerHost ||
@@ -124,13 +142,15 @@ export function createAppShell(container: HTMLElement, actions: Parameters<typeo
     !footer ||
     !splatControls ||
     !interiorDebug ||
-    !annotationEditor
+    !annotationEditor ||
+    !replayButton
   ) {
     throw new Error('App shell failed to initialize.');
   }
 
   const loader: LoaderController = createLoader(viewerHost);
   const toolbar = createToolbar(footer, actions);
+  replayButton.onclick = () => options.onReplay?.();
   const getAnnInput = (key: string): HTMLInputElement | null =>
     annotationEditor.querySelector<HTMLInputElement>(`[data-ann="${key}"]`);
   const getAnnSelect = (key: string): HTMLSelectElement | null =>
@@ -189,7 +209,9 @@ export function createAppShell(container: HTMLElement, actions: Parameters<typeo
       errorDetails.innerHTML = '';
     },
     configureToolbar(config: SceneConfig): void {
-      toolbar.setConfig(config);
+      if (controlsVisible) {
+        toolbar.setConfig(config);
+      }
     },
     configureInteriorDebug(
       config: InteriorViewConfig,
@@ -238,6 +260,10 @@ export function createAppShell(container: HTMLElement, actions: Parameters<typeo
       items: SplatToggleItem[],
       onSelect: (id: string) => void,
     ): void {
+      if (!controlsVisible) {
+        splatControls.innerHTML = '';
+        return;
+      }
       const staircaseActive = items.some((item) => item.id === 'staircase' && item.active);
       interiorDebug.classList.toggle('hidden', !staircaseActive);
       splatControls.innerHTML = '';
@@ -317,6 +343,10 @@ export function createAppShell(container: HTMLElement, actions: Parameters<typeo
       annZPlus.onclick = () => annotationHandlers?.onNudge('z', nudgeValue());
     },
     setAnnotationEditorState(state: AnnotationEditorState): void {
+      if (!controlsVisible) {
+        annotationEditor.classList.add('hidden');
+        return;
+      }
       annotationEditor.classList.toggle('hidden', !state.available);
       if (
         !annEditMode ||

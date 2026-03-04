@@ -1,0 +1,102 @@
+{
+  "id": "cake",
+  "title": "Harmony 2nd Birthday Cake",
+  "assets": [
+    {
+      "id": "cake_main",
+      "src": "scenes/cake/splats/gs_Harmony_Cake_2nd_Birthday.splat",
+      "transform": {
+        "position": [0, 0, 0],
+        "rotation": [180, -90, 0],
+        "scale": [1, 1, 1]
+      },
+      "visibleDefault": true
+    }
+  ],
+  "camera": {
+    "home": {
+      "position": [0, 0.05, 1.7],
+      "target": [0, 0, 0],
+      "fov": 46
+    },
+    "limits": {
+      "minDistance": 1.8,
+      "maxDistance": 7.5,
+      "minPolarAngle": 0.3,
+      "maxPolarAngle": 1.53
+    },
+    "transitionMs": 750
+  },
+  "ui": {
+    "enableFullscreen": true,
+    "enableAutorotate": true,
+    "enableReset": true,
+    "enablePan": false,
+    "autorotateDefaultOn": false
+  },
+  "transitions": {
+    "sceneFadeMs": 350,
+    "fadeColour": "#ffffff"
+  },
+  "presentation": {
+    "mode": "embedHero",
+    "introAutoRotateDelayMs": 0,
+    "idleRotateSpeed": 0.56,
+    "introSpinDegrees": 180
+  },
+  "reveal": {
+    "enabled": true,
+    "mode": "bottomSphere",
+    "durationMs": 5400,
+    "band": 0.16,
+    "ease": "easeInOut",
+    "affectAlpha": true,
+    "affectSize": true,
+    "startPadding": -0.02,
+    "endPadding": 0.02,
+    "particleIntro": {
+      "durationMs": 1500,
+      "particleCount": 10000,
+      "spread": 0.55,
+      "size": 0.016,
+      "color": "#ffd9ab",
+      "blend": "additive"
+    },
+    "bottomSphere": {
+      "durationMs": 5400,
+      "feather": 0.2,
+      "originYOffset": 0,
+      "maxRadiusScale": 6
+    },
+    "bottomClip": {
+      "enabled": true,
+      "offset": 0.02
+    }
+  },
+  "interiorView": {
+    "enabled": false,
+    "target": [0, 0, 0],
+    "radius": 1,
+    "softness": 0.2,
+    "fadeAlpha": 0.18,
+    "maxDistance": 12,
+    "affectSize": false
+  },
+  "annotations": {
+    "enabled": false,
+    "defaultSelectedId": null,
+    "pins": [],
+    "ui": {
+      "showTooltip": false,
+      "showNav": false,
+      "pinStyle": "numbered",
+      "occlusion": {
+        "enabled": true,
+        "mode": "depth",
+        "fadeAlpha": 0.2,
+        "disableClickWhenOccluded": true,
+        "epsilon": 0.01
+      }
+    }
+  }
+}
