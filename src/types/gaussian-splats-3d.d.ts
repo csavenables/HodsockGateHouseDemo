@@ -30,6 +30,7 @@ declare module '@mkkellogg/gaussian-splats-3d' {
     enableOptionalEffects?: boolean;
     sharedMemoryForWorkers?: boolean;
     gpuAcceleratedSort?: boolean;
+    optimizeSplatData?: boolean;
     logLevel?: number;
   }
 

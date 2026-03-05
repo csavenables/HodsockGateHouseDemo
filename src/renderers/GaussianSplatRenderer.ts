@@ -695,6 +695,7 @@ export class GaussianSplatRenderer implements SplatRenderer {
       enableOptionalEffects: true,
       sharedMemoryForWorkers: false,
       gpuAcceleratedSort: false,
+      optimizeSplatData: false,
       logLevel: GaussianSplats3D.LogLevel.None,
     });
   }
