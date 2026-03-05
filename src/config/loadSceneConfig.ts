@@ -1,4 +1,5 @@
 import { SceneConfig, validateSceneConfig } from './schema';
+import { resolveRuntimeUrl } from './runtimeUrl';
 
 export class SceneConfigError extends Error {
   constructor(message: string, public readonly details: string[] = []) {
@@ -8,7 +9,7 @@ export class SceneConfigError extends Error {
 }
 
 export async function loadSceneConfig(sceneId: string): Promise<SceneConfig> {
-  const url = `${import.meta.env.BASE_URL}scenes/${sceneId}/scene.json`;
+  const url = resolveRuntimeUrl(`scenes/${sceneId}/scene.json`);
 
   let response: Response;
   try {
@@ -55,8 +56,7 @@ function resolveAssetPath(path: string): string {
     return path;
   }
 
-  const relativePath = path.startsWith('/') ? path.slice(1) : path;
-  return `${import.meta.env.BASE_URL}${relativePath}`;
+  return resolveRuntimeUrl(path);
 }
 
 function isExternalPath(path: string): boolean {
