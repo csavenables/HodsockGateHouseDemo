@@ -45,16 +45,16 @@
     "introSpinDegrees": 170
   },
   "cinematicReveal": {
-    "enabled": true,
+    "enabled": false,
     "originMode": "topCenter",
     "staticPointCloud": false,
-    "particleLeadMs": 4200,
-    "splatDelayMs": 3000,
-    "sphereExpandMs": 12000,
-    "overlapMs": 900,
+    "particleLeadMs": 1,
+    "splatDelayMs": 0,
+    "sphereExpandMs": 2200,
+    "overlapMs": 0,
     "pointCloudFadeOutMs": 1200,
-    "zoomOutFactor": 1.04,
-    "zoomStartYOffset": 0.9,
+    "zoomOutFactor": 1,
+    "zoomStartYOffset": 0,
     "ease": "easeInOut"
   },
   "performanceProfile": {

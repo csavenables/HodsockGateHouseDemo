@@ -11,7 +11,6 @@ import { SplatHandle } from '../renderers/types';
 import { InputBindings } from './InputBindings';
 import { CameraController } from './CameraController';
 import { SceneManager, SplatToggleItem } from './SceneManager';
-import { ParticleIntroController } from './ParticleIntroController';
 import { easeInOutCubic } from '../utils/easing';
 
 export interface ViewerUi {
@@ -54,7 +53,6 @@ export class Viewer {
   private readonly inputBindings: InputBindings;
   private readonly annotationManager: AnnotationManager;
   private readonly annotationPersistence = new AnnotationPersistence();
-  private readonly particleIntroController = new ParticleIntroController(this.scene);
   private readonly resizeObserver: ResizeObserver;
 
   private activeSceneId = '';
@@ -260,7 +258,6 @@ export class Viewer {
     node.removeEventListener('pointerdown', this.onUserInteraction);
     node.removeEventListener('wheel', this.onUserInteraction);
     node.removeEventListener('touchstart', this.onUserInteraction);
-    this.particleIntroController.dispose();
     this.annotationManager.dispose();
     void this.sceneManager.dispose();
     this.cameraController.dispose();
@@ -387,37 +384,11 @@ export class Viewer {
     await this.sceneManager.resetActiveRevealStart();
     const activeHandle = this.sceneManager.getActiveHandle();
     const revealDurationMs = this.getRevealDurationMs(reveal);
-    let particleSource: THREE.Vector3[] = [];
-    let particleColors: Float32Array | null = null;
-    let particleDurationMs = 0;
-    let splatDelayMs = 0;
-    let overlapMs = Math.max(280, Math.floor(revealDurationMs * 0.45));
-    let originMode: 'topCenter' | 'modelCenter' | 'customOffset' = 'modelCenter';
-    let introEase: 'linear' | 'easeInOut' = reveal.ease;
-    let staticPointCloud = false;
-    let pointCloudFadeOutMs = Math.max(280, Math.floor(revealDurationMs * 0.45));
+    let introDurationMs = revealDurationMs;
     let zoomOutFactor = 1;
     if (this.activeConfig.cinematicReveal.enabled) {
-      particleDurationMs = this.activeConfig.cinematicReveal.particleLeadMs;
-      splatDelayMs = this.activeConfig.cinematicReveal.splatDelayMs;
-      overlapMs = this.activeConfig.cinematicReveal.overlapMs;
-      originMode = this.activeConfig.cinematicReveal.originMode;
-      introEase = this.activeConfig.cinematicReveal.ease;
-      staticPointCloud = this.activeConfig.cinematicReveal.staticPointCloud;
-      pointCloudFadeOutMs = this.activeConfig.cinematicReveal.pointCloudFadeOutMs;
+      introDurationMs = Math.max(200, this.activeConfig.cinematicReveal.sphereExpandMs);
       zoomOutFactor = this.activeConfig.cinematicReveal.zoomOutFactor;
-    }
-    const performanceProfile = this.activeConfig.performanceProfile;
-    const firstVisitIntroOptimization =
-      performanceProfile.enabled && this.shouldApplyFirstLoadIntroOptimization();
-    if (firstVisitIntroOptimization) {
-      particleDurationMs = Math.min(
-        Math.max(220, performanceProfile.firstLoadParticleDurationMs),
-        particleDurationMs > 0 ? particleDurationMs : performanceProfile.firstLoadParticleDurationMs,
-      );
-      if (performanceProfile.firstLoadDisableStaticPointCloud) {
-        staticPointCloud = false;
-      }
     }
     if (
       !this.reducedMotion &&
@@ -425,32 +396,10 @@ export class Viewer {
     ) {
       this.startIntroZoom(
         this.activeConfig,
-        this.getIntroSpinDurationMs(revealDurationMs, particleDurationMs, splatDelayMs),
+        introDurationMs,
         zoomOutFactor,
         this.activeConfig.cinematicReveal.zoomStartYOffset,
       );
-    }
-    if (
-      activeHandle &&
-      !this.reducedMotion &&
-      reveal.particleIntro.durationMs > 0 &&
-      reveal.particleIntro.particleCount > 0
-    ) {
-      const sampleCloud = this.splatRenderer.getSplatSampleCloud(activeHandle.id, {
-        maxSamples: firstVisitIntroOptimization
-          ? Math.min(reveal.particleIntro.particleCount, performanceProfile.firstLoadIntroParticleCount)
-          : reveal.particleIntro.particleCount,
-        randomize: true,
-        space: 'local',
-        includeColors: true,
-      });
-      particleSource = sampleCloud.points;
-      particleColors = sampleCloud.colors ?? null;
-      if (particleSource.length > 0) {
-        if (!this.activeConfig.cinematicReveal.enabled) {
-          particleDurationMs = Math.max(120, reveal.particleIntro.durationMs);
-        }
-      }
     }
 
     const spinPromises: Promise<void>[] = [];
@@ -460,39 +409,15 @@ export class Viewer {
     if (activeHandle && activeOrientation) {
       activeHandle.object3D.quaternion.copy(activeOrientation.start);
       spinPromises.push(
-        this.animateIntroSpin(
-          activeHandle,
-          activeOrientation.end,
+              this.animateIntroSpin(
+                activeHandle,
+                activeOrientation.end,
               activeOrientation.spinDegrees,
-              this.getIntroSpinDurationMs(revealDurationMs, particleDurationMs, splatDelayMs),
+              introDurationMs,
             ),
       );
       spinStartedIds.add(activeHandle.id);
     }
-    const particlePromise =
-      activeHandle && particleDurationMs > 0
-        ? this.particleIntroController.play(
-            particleSource,
-            activeHandle.boundsY,
-            {
-              ...reveal.particleIntro,
-              durationMs: Math.max(120, particleDurationMs),
-            },
-            this.reducedMotion,
-            {
-              anchor: activeHandle.object3D,
-              sourceColors: particleColors,
-              originMode,
-              ease: introEase,
-              lockToSource: staticPointCloud,
-            },
-          )
-        : Promise.resolve();
-
-    if (splatDelayMs > 0) {
-      await this.sleep(splatDelayMs);
-    }
-
     const revealPromise = this.sceneManager.revealActiveScene({
       reducedMotion: this.reducedMotion,
       revealOverride: reveal,
@@ -507,35 +432,20 @@ export class Viewer {
                 handle,
                 orientation.end,
                 orientation.spinDegrees,
-                this.getIntroSpinDurationMs(spinDuration, particleDurationMs, splatDelayMs),
+                spinDuration,
               ),
             );
             spinStartedIds.add(handle.id);
           }
         }
-        if (!staticPointCloud) {
-          void this.particleIntroController.cover(
-            this.reducedMotion ? Math.max(220, Math.floor(overlapMs * 0.75)) : Math.max(220, overlapMs),
-          );
-        }
       },
     });
-    await Promise.allSettled([particlePromise, revealPromise]);
-    if (staticPointCloud && particleDurationMs > 0) {
-      await this.particleIntroController.cover(
-        this.reducedMotion
-          ? Math.max(220, Math.floor(pointCloudFadeOutMs * 0.75))
-          : Math.max(220, pointCloudFadeOutMs),
-      );
-    }
+    await Promise.allSettled([revealPromise]);
     if (spinPromises.length > 0) {
       await Promise.allSettled(spinPromises);
     }
     const introCompleteMs = Math.max(0, performance.now() - this.introStartedAtMs);
     console.info(`[perf] intro_complete_ms=${introCompleteMs.toFixed(1)}`);
-    if (firstVisitIntroOptimization) {
-      this.markFirstLoadIntroOptimizationApplied();
-    }
     const shouldAutoRotate = this.shouldEnableAutoRotateAfterIntro(this.activeConfig);
     this.autoRotate = shouldAutoRotate;
     if (shouldAutoRotate) {
@@ -563,22 +473,6 @@ export class Viewer {
       },
       ease: config.cinematicReveal.ease,
     };
-  }
-
-  private sleep(durationMs: number): Promise<void> {
-    return new Promise((resolve) => {
-      window.setTimeout(resolve, Math.max(0, durationMs));
-    });
-  }
-
-  private getIntroSpinDurationMs(
-    revealDurationMs: number,
-    particleLeadMs: number,
-    splatDelayMs: number,
-  ): number {
-    const timelineDuration =
-      particleLeadMs > 0 ? Math.max(particleLeadMs, splatDelayMs + revealDurationMs) : revealDurationMs;
-    return Math.max(300, timelineDuration);
   }
 
   private startIntroZoom(
@@ -740,22 +634,6 @@ export class Viewer {
     }
     window.clearTimeout(this.idleRotateResumeTimer);
     this.idleRotateResumeTimer = 0;
-  }
-
-  private shouldApplyFirstLoadIntroOptimization(): boolean {
-    try {
-      return window.localStorage.getItem('hg:firstLoadIntroOptimizationApplied') !== '1';
-    } catch {
-      return false;
-    }
-  }
-
-  private markFirstLoadIntroOptimizationApplied(): void {
-    try {
-      window.localStorage.setItem('hg:firstLoadIntroOptimizationApplied', '1');
-    } catch {
-      // Ignore storage failures.
-    }
   }
 
   private async saveAnnotations(): Promise<void> {
