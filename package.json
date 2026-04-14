@@ -15,13 +15,19 @@
     "convert:ksplat:speed": "node scripts/convert-splat.mjs --preset speed --format ksplat",
     "convert:ksplat:quality": "node scripts/convert-splat.mjs --preset quality --format ksplat",
     "convert:spz": "node scripts/convert-splat.mjs --preset balanced --format spz",
-    "bench:startup": "node scripts/bench-startup.mjs --samples 5"
+    "convert:sog:safe": "node scripts/convert-sog.mjs --preset safe --mode all",
+    "convert:sog:balanced": "node scripts/convert-sog.mjs --preset balanced --mode all",
+    "convert:sog:aggressive": "node scripts/convert-sog.mjs --preset aggressive --mode all",
+    "convert:sog:lod": "node scripts/convert-sog.mjs --preset balanced --mode lod",
+    "bench:startup": "node scripts/bench-startup.mjs --samples 5",
+    "bench:size-and-startup": "node scripts/bench-size-and-startup.mjs --samples 5"
   },
   "dependencies": {
     "@mkkellogg/gaussian-splats-3d": "0.4.7",
     "three": "0.160.0"
   },
   "devDependencies": {
+    "@playcanvas/splat-transform": "^1.10.2",
     "@types/node": "22.10.1",
     "@types/three": "0.160.0",
     "@typescript-eslint/eslint-plugin": "8.18.1",

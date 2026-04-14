@@ -13,7 +13,8 @@ import {
   SplatSampleOptions,
 } from './types';
 
-const SUPPORTED_EXTENSIONS = ['.ply', '.splat', '.ksplat', '.spz'] as const;
+const RUNTIME_SUPPORTED_EXTENSIONS = ['.ply', '.splat', '.ksplat', '.spz'] as const;
+const SOURCE_ONLY_EXTENSIONS = ['.sog'] as const;
 const MAX_REVEAL_SCENES = 32;
 const REVEAL_PATCH_FLAG = '__splatRevealPatched';
 const ENABLE_SHADER_REVEAL = true;
@@ -109,6 +110,7 @@ export class GaussianSplatRenderer implements SplatRenderer {
   private sceneMutationQueue: Promise<void> = Promise.resolve();
   private readonly splatBlobUrlCache = new Map<string, Promise<string>>();
   private readonly transientBlobUrls = new Set<string>();
+  private warnedSogFallback = false;
   private currentFetchMs = 0;
   private lastLoadMetrics: RuntimeLoadMetrics = {
     assetFetchMs: 0,
@@ -443,6 +445,32 @@ export class GaussianSplatRenderer implements SplatRenderer {
 
   private async resolveAssetSource(asset: SplatAssetConfig): Promise<ResolvedAssetSource> {
     const extension = getAssetExtension(asset.src);
+    if (extension === '.sog') {
+      const fallbackSrc = asset.fallbackSrc;
+      if (!fallbackSrc) {
+        throw new Error(
+          `Asset "${asset.src}" is SOG and requires "fallbackSrc" for this runtime.`,
+        );
+      }
+      const fallbackExtension = getAssetExtension(fallbackSrc);
+      const fallbackFormat = this.resolveSceneFormat(fallbackExtension);
+      if (!fallbackFormat || !fallbackExtension) {
+        throw new Error(
+          `Asset "${asset.src}" fallback "${fallbackSrc}" must use one of: ${RUNTIME_SUPPORTED_EXTENSIONS.join(', ')}.`,
+        );
+      }
+      if (!this.warnedSogFallback) {
+        console.info(
+          `[assets] SOG source detected for "${asset.id}". Runtime fallback is using "${fallbackExtension}" (${fallbackSrc}).`,
+        );
+        this.warnedSogFallback = true;
+      }
+      return {
+        path: fallbackSrc,
+        format: fallbackFormat,
+        extension: fallbackExtension,
+      };
+    }
     const format = this.resolveSceneFormat(extension);
 
     if (extension !== '.splat') {
@@ -813,11 +841,34 @@ export class GaussianSplatRenderer implements SplatRenderer {
   private ensureSupportedAssetFormats(assets: SplatAssetConfig[]): void {
     for (const asset of assets) {
       const extension = getAssetExtension(asset.src);
-      if (!extension || !SUPPORTED_EXTENSIONS.includes(extension as (typeof SUPPORTED_EXTENSIONS)[number])) {
+      if (
+        extension &&
+        RUNTIME_SUPPORTED_EXTENSIONS.includes(extension as (typeof RUNTIME_SUPPORTED_EXTENSIONS)[number])
+      ) {
+        continue;
+      }
+      if (extension && SOURCE_ONLY_EXTENSIONS.includes(extension as (typeof SOURCE_ONLY_EXTENSIONS)[number])) {
+        const fallbackExtension = asset.fallbackSrc ? getAssetExtension(asset.fallbackSrc) : null;
+        if (
+          fallbackExtension &&
+          RUNTIME_SUPPORTED_EXTENSIONS.includes(
+            fallbackExtension as (typeof RUNTIME_SUPPORTED_EXTENSIONS)[number],
+          )
+        ) {
+          continue;
+        }
         throw new Error(
-          `Unsupported asset format for "${asset.src}". Supported formats: ${SUPPORTED_EXTENSIONS.join(', ')}.`,
+          `Asset "${asset.src}" is SOG and needs "fallbackSrc" using ${RUNTIME_SUPPORTED_EXTENSIONS.join(', ')}.`,
         );
       }
+      if (!extension) {
+        throw new Error(
+          `Unsupported asset format for "${asset.src}". Supported runtime formats: ${RUNTIME_SUPPORTED_EXTENSIONS.join(', ')}.`,
+        );
+      }
+      throw new Error(
+        `Unsupported asset format for "${asset.src}". Supported runtime formats: ${RUNTIME_SUPPORTED_EXTENSIONS.join(', ')}.`,
+      );
     }
   }
 

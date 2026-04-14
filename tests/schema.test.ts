@@ -64,6 +64,44 @@ describe('validateSceneConfig', () => {
     }
   });
 
+  it('accepts sog source with fallback runtime asset', () => {
+    const valid = {
+      id: 'demo',
+      title: 'Demo',
+      assets: [
+        {
+          id: 'a',
+          src: '/scenes/demo/splats/scene.sog',
+          fallbackSrc: '/scenes/demo/splats/scene.ksplat',
+          transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+          visibleDefault: true,
+        },
+      ],
+      camera: {
+        home: { position: [0, 0, 2], target: [0, 0, 0], fov: 50 },
+        limits: { minDistance: 0.4, maxDistance: 4, minPolarAngle: 0.1, maxPolarAngle: 2.9 },
+        transitionMs: 500,
+      },
+      ui: {
+        enableFullscreen: true,
+        enableAutorotate: true,
+        enableReset: true,
+        enablePan: true,
+        autorotateDefaultOn: false,
+      },
+      transitions: {
+        sceneFadeMs: 300,
+      },
+    };
+
+    const result = validateSceneConfig(valid);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.assets[0].src).toContain('.sog');
+      expect(result.data.assets[0].fallbackSrc).toContain('.ksplat');
+    }
+  });
+
   it('rejects configs with more than 5 assets', () => {
     const baseAsset = {
       id: 'a',

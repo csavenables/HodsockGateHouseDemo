@@ -7,11 +7,9 @@ import {
 import { AnnotationPersistence } from '../annotations/AnnotationPersistence';
 import { InteriorViewConfig, RevealConfig, SceneConfig } from '../config/schema';
 import { GaussianSplatRenderer } from '../renderers/GaussianSplatRenderer';
-import { SplatHandle } from '../renderers/types';
 import { InputBindings } from './InputBindings';
 import { CameraController } from './CameraController';
 import { SceneManager, SplatToggleItem } from './SceneManager';
-import { easeInOutCubic } from '../utils/easing';
 
 export interface ViewerUi {
   setLoading(loading: boolean, message?: string): void;
@@ -387,68 +385,35 @@ export class Viewer {
     this.introStartedAtMs = performance.now();
     const reveal = this.getIntroRevealConfig(this.activeConfig);
     await this.sceneManager.resetActiveRevealStart();
-    const activeHandle = this.sceneManager.getActiveHandle();
     const revealDurationMs = this.getRevealDurationMs(reveal);
     let introDurationMs = revealDurationMs;
     let zoomOutFactor = 1;
+    let zoomStartYOffset = 0;
     if (this.activeConfig.cinematicReveal.enabled) {
       introDurationMs = Math.max(200, this.activeConfig.cinematicReveal.sphereExpandMs);
       zoomOutFactor = this.activeConfig.cinematicReveal.zoomOutFactor;
+      zoomStartYOffset = this.activeConfig.cinematicReveal.zoomStartYOffset;
     }
     if (
       !this.reducedMotion &&
-      (zoomOutFactor > 1.001 || Math.abs(this.activeConfig.cinematicReveal.zoomStartYOffset) > 0.001)
+      (zoomOutFactor > 1.001 ||
+        Math.abs(zoomStartYOffset) > 0.001 ||
+        Math.abs(this.activeConfig.presentation.introSpinDegrees) > 0.001)
     ) {
-      this.startIntroZoom(
+      this.startIntroCameraMove(
         this.activeConfig,
         introDurationMs,
         zoomOutFactor,
-        this.activeConfig.cinematicReveal.zoomStartYOffset,
+        zoomStartYOffset,
+        this.activeConfig.presentation.introSpinDegrees,
       );
     }
 
-    const spinPromises: Promise<void>[] = [];
-    const spinStartedIds = new Set<string>();
-    const activeOrientation =
-      activeHandle && this.activeConfig ? this.computeIntroOrientation(activeHandle, this.activeConfig) : null;
-    if (activeHandle && activeOrientation) {
-      activeHandle.object3D.quaternion.copy(activeOrientation.start);
-      spinPromises.push(
-              this.animateIntroSpin(
-                activeHandle,
-                activeOrientation.end,
-              activeOrientation.spinDegrees,
-              introDurationMs,
-            ),
-      );
-      spinStartedIds.add(activeHandle.id);
-    }
     const revealPromise = this.sceneManager.revealActiveScene({
       reducedMotion: this.reducedMotion,
       revealOverride: reveal,
-      beforeRevealIn: ({ handle, reveal: revealConfig }) => {
-        const spinDuration = this.getRevealDurationMs(revealConfig);
-        if (!spinStartedIds.has(handle.id)) {
-          const orientation = this.computeIntroOrientation(handle, this.activeConfig!);
-          if (orientation) {
-            handle.object3D.quaternion.copy(orientation.start);
-            spinPromises.push(
-              this.animateIntroSpin(
-                handle,
-                orientation.end,
-                orientation.spinDegrees,
-                spinDuration,
-              ),
-            );
-            spinStartedIds.add(handle.id);
-          }
-        }
-      },
     });
     await Promise.allSettled([revealPromise]);
-    if (spinPromises.length > 0) {
-      await Promise.allSettled(spinPromises);
-    }
     const introCompleteMs = Math.max(0, performance.now() - this.introStartedAtMs);
     console.info(`[perf] intro_complete_ms=${introCompleteMs.toFixed(1)}`);
     const shouldAutoRotate = this.shouldEnableAutoRotateAfterIntro(this.activeConfig);
@@ -480,11 +445,12 @@ export class Viewer {
     };
   }
 
-  private startIntroZoom(
+  private startIntroCameraMove(
     config: SceneConfig,
     durationMs: number,
     zoomOutFactor: number,
     zoomStartYOffset: number,
+    spinDegrees: number,
   ): void {
     const home = this.fittedHome ?? config.camera.home;
     const target = new THREE.Vector3(...home.target);
@@ -495,7 +461,10 @@ export class Viewer {
       return;
     }
     direction.normalize();
-    const start = target.clone().add(direction.multiplyScalar(distance * zoomOutFactor));
+    const spunDirection = direction
+      .clone()
+      .applyAxisAngle(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(spinDegrees));
+    const start = target.clone().add(spunDirection.multiplyScalar(distance * zoomOutFactor));
     start.y += zoomStartYOffset;
     this.cameraController.setHomeImmediately({
       position: [start.x, start.y, start.z],
@@ -508,65 +477,6 @@ export class Viewer {
       fov: home.fov,
       durationMs,
     });
-  }
-
-  private async animateIntroSpin(
-    handle: SplatHandle,
-    endQ: THREE.Quaternion,
-    spinDegrees: number,
-    durationMs: number,
-  ): Promise<void> {
-    const duration = Math.max(200, durationMs);
-    const upAxis = new THREE.Vector3(0, 1, 0);
-    const yaw = new THREE.Quaternion();
-    const compose = (degrees: number): void => {
-      yaw.setFromAxisAngle(upAxis, THREE.MathUtils.degToRad(degrees));
-      handle.object3D.quaternion.copy(endQ).multiply(yaw);
-    };
-    compose(spinDegrees);
-
-    const start = performance.now();
-    await new Promise<void>((resolve) => {
-      const step = (now: number): void => {
-        const t = Math.min(1, (now - start) / duration);
-        const eased = easeInOutCubic(t);
-        compose(spinDegrees * (1 - eased));
-        if (t >= 1) {
-          handle.object3D.quaternion.copy(endQ);
-          resolve();
-          return;
-        }
-        requestAnimationFrame(step);
-      };
-      requestAnimationFrame(step);
-    });
-  }
-
-  private computeIntroOrientation(
-    handle: SplatHandle,
-    config: SceneConfig,
-  ): { start: THREE.Quaternion; end: THREE.Quaternion; spinDegrees: number } | null {
-    const spinDegrees = config.presentation.introSpinDegrees;
-    if (Math.abs(spinDegrees) < 0.001) {
-      return null;
-    }
-    const asset = config.assets.find((entry) => entry.id === handle.id);
-    if (!asset) {
-      return null;
-    }
-    const end = new THREE.Quaternion().setFromEuler(
-      new THREE.Euler(
-        THREE.MathUtils.degToRad(asset.transform.rotation[0]),
-        THREE.MathUtils.degToRad(asset.transform.rotation[1]),
-        THREE.MathUtils.degToRad(asset.transform.rotation[2]),
-      ),
-    );
-    const yaw = new THREE.Quaternion().setFromAxisAngle(
-      new THREE.Vector3(0, 1, 0),
-      THREE.MathUtils.degToRad(spinDegrees),
-    );
-    const start = end.clone().multiply(yaw);
-    return { start, end, spinDegrees };
   }
 
   private getRevealDurationMs(reveal: SceneConfig['reveal']): number {

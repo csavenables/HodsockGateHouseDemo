@@ -9,6 +9,7 @@ export interface SplatTransform {
 export interface SplatAssetConfig {
   id: string;
   src: string;
+  fallbackSrc?: string;
   transform: SplatTransform;
   visibleDefault: boolean;
 }
@@ -203,6 +204,22 @@ function readString(obj: Record<string, unknown>, key: string, errors: string[])
   return value;
 }
 
+function readOptionalString(
+  obj: Record<string, unknown>,
+  key: string,
+  errors: string[],
+): string | undefined {
+  const value = obj[key];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    errors.push(`"${key}" must be a non-empty string when provided.`);
+    return undefined;
+  }
+  return value;
+}
+
 function readNullableString(
   obj: Record<string, unknown>,
   key: string,
@@ -279,6 +296,7 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
       assets.push({
         id: readString(item, 'id', errors),
         src: readString(item, 'src', errors),
+        fallbackSrc: readOptionalString(item, 'fallbackSrc', errors),
         transform: {
           position: readVec3(transformValue, 'position', errors),
           rotation: readVec3(transformValue, 'rotation', errors),
@@ -670,8 +688,8 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
   if (config.presentation.introAutoRotateDelayMs < 0) {
     errors.push('"presentation.introAutoRotateDelayMs" must be >= 0.');
   }
-  if (config.presentation.idleRotateSpeed <= 0) {
-    errors.push('"presentation.idleRotateSpeed" must be > 0.');
+  if (Math.abs(config.presentation.idleRotateSpeed) < 0.000001) {
+    errors.push('"presentation.idleRotateSpeed" must be non-zero.');
   }
   if (config.cinematicReveal.particleLeadMs <= 0) {
     errors.push('"cinematicReveal.particleLeadMs" must be > 0.');

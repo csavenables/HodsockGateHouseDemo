@@ -7,7 +7,8 @@
 - TypeScript strict mode with a modular viewer architecture.
 - Scene config loading and runtime schema validation with friendly error states.
 - Configurable camera home view, orbit/pan/zoom limits, and smooth reset transitions.
-- Multi-splat scene loading with supported formats: `.ply`, `.splat`, `.ksplat`, `.spz`.
+- Multi-splat scene loading with supported runtime formats: `.ply`, `.splat`, `.ksplat`, `.spz`.
+- SOG-first source pipeline via `splat-transform`, with non-destructive runtime fallback.
 - Fade-out/fade-in scene transitions and basic loading UX.
 - Per-splat bottom-up reveal / downward dissolve driven by `scene.json` reveal config.
 - Optional `particleIntro` reveal mode for hero-style splat intros.
@@ -106,6 +107,35 @@ If `bench:startup` reports missing Playwright:
 npm i -D playwright
 npx playwright install chromium
 ```
+
+### SOG Pipeline
+
+Generate SOG outputs with deterministic filtering presets:
+
+```bash
+npm run convert:sog:safe
+npm run convert:sog:balanced
+npm run convert:sog:aggressive
+```
+
+Generate only the balanced LOD streaming bundle:
+
+```bash
+npm run convert:sog:lod
+```
+
+Outputs per preset:
+
+- `public/scenes/hodsock-gatehouse/splats/sog/<preset>/scene.sog`
+- `public/scenes/hodsock-gatehouse/splats/sog/<preset>/lod/lod-meta.json`
+
+Combined size + startup benchmark:
+
+```bash
+npm run bench:size-and-startup
+```
+
+Note: current runtime remains `@mkkellogg/gaussian-splats-3d`, so scene assets can declare a `.sog` `src` with `fallbackSrc` (for example `.ksplat`) to preserve camera/intro behavior unchanged while the compression pipeline is evaluated.
 
 ### Performance Profile (Scene JSON)
 

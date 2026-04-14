@@ -4,7 +4,8 @@
   "assets": [
     {
       "id": "gatehouse_main",
-      "src": "scenes/hodsock-gatehouse/splats/HodsockCombined30k.ksplat",
+      "src": "scenes/hodsock-gatehouse/splats/HodsockCombined30k.sog",
+      "fallbackSrc": "scenes/hodsock-gatehouse/splats/HodsockCombined30k.ksplat",
       "transform": {
         "position": [0, 0, 0],
         "rotation": [180, -203, 0],
@@ -15,9 +16,9 @@
   ],
   "camera": {
     "home": {
-      "position": [0, 1.08, 3.55],
-      "target": [0, 0.8, 0],
-      "fov": 54
+      "position": [-1.15, 1.27, 3.29],
+      "target": [0.06, 0.86, 0.03],
+      "fov": 52
     },
     "limits": {
       "minDistance": 1.2,
@@ -41,20 +42,20 @@
   "presentation": {
     "mode": "embedHero",
     "introAutoRotateDelayMs": 0,
-    "idleRotateSpeed": 0.03,
-    "introSpinDegrees": 170
+    "idleRotateSpeed": -0.18,
+    "introSpinDegrees": 295
   },
   "cinematicReveal": {
-    "enabled": false,
+    "enabled": true,
     "originMode": "topCenter",
     "staticPointCloud": false,
     "particleLeadMs": 1,
     "splatDelayMs": 0,
-    "sphereExpandMs": 2200,
+    "sphereExpandMs": 3600,
     "overlapMs": 0,
     "pointCloudFadeOutMs": 1200,
-    "zoomOutFactor": 1,
-    "zoomStartYOffset": 0,
+    "zoomOutFactor": 1.12,
+    "zoomStartYOffset": 0.08,
     "ease": "easeInOut"
   },
   "performanceProfile": {
@@ -67,7 +68,7 @@
   "reveal": {
     "enabled": true,
     "mode": "bottomSphere",
-    "durationMs": 2200,
+    "durationMs": 3600,
     "band": 0.14,
     "ease": "easeInOut",
     "affectAlpha": true,
@@ -83,7 +84,7 @@
       "blend": "additive"
     },
     "bottomSphere": {
-      "durationMs": 2200,
+      "durationMs": 3600,
       "feather": 0.28,
       "originAnchor": "top",
       "originYOffset": 0.04,
