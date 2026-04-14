@@ -308,8 +308,18 @@ export class Viewer {
 
   private fitCameraToContent(config: SceneConfig): void {
     if (config.id === 'hodsock-gatehouse') {
-      this.cameraController.setHomeImmediately(config.camera.home);
-      this.fittedHome = config.camera.home;
+      const target = new THREE.Vector3(...config.camera.home.target);
+      const position = new THREE.Vector3(...config.camera.home.position);
+      const zoomOutMultiplier = this.getHodsockZoomOutMultiplier();
+      const adjustedPosition = target
+        .clone()
+        .add(position.clone().sub(target).multiplyScalar(zoomOutMultiplier));
+      const adjustedHome: SceneConfig['camera']['home'] = {
+        ...config.camera.home,
+        position: [adjustedPosition.x, adjustedPosition.y, adjustedPosition.z],
+      };
+      this.cameraController.setHomeImmediately(adjustedHome);
+      this.fittedHome = adjustedHome;
       return;
     }
     const fit = this.splatRenderer.getFitData();
@@ -427,6 +437,13 @@ export class Viewer {
       return;
     }
     this.cameraController.setAutoRotate(false, this.currentIdleRotateSpeed);
+  }
+
+  private getHodsockZoomOutMultiplier(): number {
+    const isMobile =
+      window.matchMedia('(max-width: 768px)').matches ||
+      window.matchMedia('(pointer: coarse)').matches;
+    return isMobile ? 1.4 : 1.2;
   }
 
   private getIntroRevealConfig(config: SceneConfig): RevealConfig {
