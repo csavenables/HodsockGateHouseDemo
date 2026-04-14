@@ -69,7 +69,7 @@
     "endPadding": 0.03,
     "particleIntro": {
       "durationMs": 4600,
-      "particleCount": 30000,
+      "particleCount": 18000,
       "spread": 0.7,
       "size": 0.024,
       "color": "#d8e8ff",

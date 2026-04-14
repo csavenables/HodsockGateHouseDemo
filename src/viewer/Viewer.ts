@@ -43,7 +43,11 @@ export interface ViewerUi {
 export class Viewer {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(50, 1, 0.01, 100);
-  private readonly webglRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  private readonly webglRenderer = new THREE.WebGLRenderer({
+    antialias: false,
+    alpha: true,
+    powerPreference: 'high-performance',
+  });
   private readonly cameraController: CameraController;
   private readonly splatRenderer = new GaussianSplatRenderer();
   private readonly sceneManager: SceneManager;
@@ -81,7 +85,7 @@ export class Viewer {
     options: { embedMode?: boolean; autorotateOverride?: boolean | null } = {},
   ) {
     this.autorotateOverride = options.autorotateOverride ?? null;
-    this.webglRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.webglRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
     this.webglRenderer.setSize(container.clientWidth, container.clientHeight);
     this.webglRenderer.setAnimationLoop(this.onFrame);
     this.webglRenderer.outputColorSpace = THREE.SRGBColorSpace;
