@@ -155,6 +155,14 @@ export interface CinematicRevealConfig {
   ease: RevealEase;
 }
 
+export interface PerformanceProfileConfig {
+  enabled: boolean;
+  firstLoadIntroParticleCount: number;
+  firstLoadParticleDurationMs: number;
+  firstLoadDisableStaticPointCloud: boolean;
+  maxDevicePixelRatio: number;
+}
+
 export interface SceneConfig {
   id: string;
   title: string;
@@ -169,6 +177,7 @@ export interface SceneConfig {
   reveal: RevealConfig;
   presentation: PresentationConfig;
   cinematicReveal: CinematicRevealConfig;
+  performanceProfile: PerformanceProfileConfig;
   interiorView: InteriorViewConfig;
   annotations: AnnotationsConfig;
 }
@@ -317,6 +326,10 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
   if (cinematicRevealValue !== undefined && !isObject(cinematicRevealValue)) {
     errors.push('"cinematicReveal" must be an object when provided.');
   }
+  const performanceProfileValue = raw.performanceProfile;
+  if (performanceProfileValue !== undefined && !isObject(performanceProfileValue)) {
+    errors.push('"performanceProfile" must be an object when provided.');
+  }
   const interiorValue = raw.interiorView;
   if (interiorValue !== undefined && !isObject(interiorValue)) {
     errors.push('"interiorView" must be an object when provided.');
@@ -329,6 +342,7 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
   const revealObject = isObject(revealValue) ? revealValue : {};
   const presentationObject = isObject(presentationValue) ? presentationValue : {};
   const cinematicRevealObject = isObject(cinematicRevealValue) ? cinematicRevealValue : {};
+  const performanceProfileObject = isObject(performanceProfileValue) ? performanceProfileValue : {};
   const particleIntroValue = revealObject.particleIntro;
   if (particleIntroValue !== undefined && !isObject(particleIntroValue)) {
     errors.push('"reveal.particleIntro" must be an object when provided.');
@@ -561,6 +575,25 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
           ? cinematicRevealObject.ease
           : 'easeInOut',
     },
+    performanceProfile: {
+      enabled:
+        typeof performanceProfileObject.enabled === 'boolean'
+          ? performanceProfileObject.enabled
+          : false,
+      firstLoadIntroParticleCount: isNumber(performanceProfileObject.firstLoadIntroParticleCount)
+        ? performanceProfileObject.firstLoadIntroParticleCount
+        : 12000,
+      firstLoadParticleDurationMs: isNumber(performanceProfileObject.firstLoadParticleDurationMs)
+        ? performanceProfileObject.firstLoadParticleDurationMs
+        : 2600,
+      firstLoadDisableStaticPointCloud:
+        typeof performanceProfileObject.firstLoadDisableStaticPointCloud === 'boolean'
+          ? performanceProfileObject.firstLoadDisableStaticPointCloud
+          : true,
+      maxDevicePixelRatio: isNumber(performanceProfileObject.maxDevicePixelRatio)
+        ? performanceProfileObject.maxDevicePixelRatio
+        : 1.1,
+    },
     interiorView: {
       enabled: typeof interiorObject.enabled === 'boolean' ? interiorObject.enabled : false,
       target: isVec3(interiorObject.target) ? interiorObject.target : [0, 0, 0],
@@ -657,6 +690,15 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
   }
   if (config.cinematicReveal.zoomOutFactor < 1) {
     errors.push('"cinematicReveal.zoomOutFactor" must be >= 1.');
+  }
+  if (config.performanceProfile.firstLoadIntroParticleCount <= 0) {
+    errors.push('"performanceProfile.firstLoadIntroParticleCount" must be > 0.');
+  }
+  if (config.performanceProfile.firstLoadParticleDurationMs <= 0) {
+    errors.push('"performanceProfile.firstLoadParticleDurationMs" must be > 0.');
+  }
+  if (config.performanceProfile.maxDevicePixelRatio <= 0) {
+    errors.push('"performanceProfile.maxDevicePixelRatio" must be > 0.');
   }
   if (config.interiorView.radius <= 0) {
     errors.push('"interiorView.radius" must be > 0.');

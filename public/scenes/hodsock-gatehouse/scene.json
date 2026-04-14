@@ -4,7 +4,7 @@
   "assets": [
     {
       "id": "gatehouse_main",
-      "src": "scenes/hodsock-gatehouse/splats/HodsockCombined30k.splat",
+      "src": "scenes/hodsock-gatehouse/splats/HodsockCombined30k.ksplat",
       "transform": {
         "position": [0, 0, 0],
         "rotation": [180, -203, 0],
@@ -47,15 +47,22 @@
   "cinematicReveal": {
     "enabled": true,
     "originMode": "topCenter",
-    "staticPointCloud": true,
-    "particleLeadMs": 4600,
+    "staticPointCloud": false,
+    "particleLeadMs": 4200,
     "splatDelayMs": 3000,
     "sphereExpandMs": 12000,
-    "overlapMs": 0,
+    "overlapMs": 900,
     "pointCloudFadeOutMs": 1200,
     "zoomOutFactor": 1.04,
     "zoomStartYOffset": 0.9,
     "ease": "easeInOut"
+  },
+  "performanceProfile": {
+    "enabled": true,
+    "firstLoadIntroParticleCount": 2200,
+    "firstLoadParticleDurationMs": 1400,
+    "firstLoadDisableStaticPointCloud": true,
+    "maxDevicePixelRatio": 1
   },
   "reveal": {
     "enabled": true,
@@ -69,7 +76,7 @@
     "endPadding": 0.03,
     "particleIntro": {
       "durationMs": 4600,
-      "particleCount": 18000,
+      "particleCount": 4200,
       "spread": 0.7,
       "size": 0.024,
       "color": "#d8e8ff",

@@ -50,7 +50,7 @@ npm run preview
 4. Add the new scene to `public/scenes/manifest.json`.
 5. Load with query param, e.g. `?scene=clientSceneId`.
 
-Default startup scene is `cake`.
+Default startup scene is `hodsock-gatehouse`.
 
 ## Runtime Query Params
 
@@ -76,6 +76,47 @@ Add a `reveal` block in scene JSON to control bottom-up materialization:
   "affectSize": true,
   "startPadding": 0,
   "endPadding": 0
+}
+```
+
+## Load-Time Optimization Workflow
+
+Convert production assets to `.ksplat` for fastest startup in this runtime:
+
+```bash
+npm run convert:ksplat
+```
+
+Conversion presets:
+
+- `npm run convert:ksplat:speed`
+- `npm run convert:ksplat` (balanced default)
+- `npm run convert:ksplat:quality`
+
+Startup benchmark (captures `[perf]` logs from headless Chromium):
+
+```bash
+npm run bench:startup
+```
+
+If `bench:startup` reports missing Playwright:
+
+```bash
+npm i -D playwright
+npx playwright install chromium
+```
+
+### Performance Profile (Scene JSON)
+
+Use `performanceProfile` in `scene.json` to reduce cold-start cost:
+
+```json
+"performanceProfile": {
+  "enabled": true,
+  "firstLoadIntroParticleCount": 4500,
+  "firstLoadParticleDurationMs": 1800,
+  "firstLoadDisableStaticPointCloud": true,
+  "maxDevicePixelRatio": 1
 }
 ```
 

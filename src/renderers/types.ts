@@ -83,6 +83,11 @@ export interface SplatSampleCloud {
   colors?: Float32Array;
 }
 
+export interface RuntimeLoadMetrics {
+  assetFetchMs: number;
+  decodeInitMs: number;
+}
+
 export interface RendererContext {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
@@ -97,6 +102,7 @@ export interface SplatRenderer {
   setVisible(id: string, visible: boolean): void;
   getSplatSampleCloud(id: string, options: SplatSampleOptions): SplatSampleCloud;
   getSplatSamplePoints(id: string, options: SplatSampleOptions): THREE.Vector3[];
+  getAndResetLoadMetrics(): RuntimeLoadMetrics;
   setInteriorView(config: InteriorViewConfig): void;
   setInteriorCameraPosition(position: THREE.Vector3): void;
   clear(): Promise<void>;

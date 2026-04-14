@@ -52,6 +52,11 @@ describe('validateSceneConfig', () => {
       expect(result.data.cinematicReveal.pointCloudFadeOutMs).toBe(1100);
       expect(result.data.cinematicReveal.zoomOutFactor).toBe(1);
       expect(result.data.cinematicReveal.zoomStartYOffset).toBe(0);
+      expect(result.data.performanceProfile.enabled).toBe(false);
+      expect(result.data.performanceProfile.firstLoadIntroParticleCount).toBe(12000);
+      expect(result.data.performanceProfile.firstLoadParticleDurationMs).toBe(2600);
+      expect(result.data.performanceProfile.firstLoadDisableStaticPointCloud).toBe(true);
+      expect(result.data.performanceProfile.maxDevicePixelRatio).toBe(1.1);
       expect(result.data.interiorView.enabled).toBe(false);
       expect(result.data.interiorView.radius).toBe(0.45);
       expect(result.data.annotations.enabled).toBe(false);
@@ -333,6 +338,51 @@ describe('validateSceneConfig', () => {
     if (!result.ok) {
       expect(result.errors.join(' ')).toContain('interiorView.radius');
       expect(result.errors.join(' ')).toContain('interiorView.maxDistance');
+    }
+  });
+
+  it('rejects invalid performance profile values', () => {
+    const invalid = {
+      id: 'demo',
+      title: 'Demo',
+      assets: [
+        {
+          id: 'a',
+          src: '/x.ply',
+          transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+          visibleDefault: true,
+        },
+      ],
+      camera: {
+        home: { position: [0, 0, 2], target: [0, 0, 0], fov: 50 },
+        limits: { minDistance: 0.4, maxDistance: 4, minPolarAngle: 0.1, maxPolarAngle: 2.9 },
+        transitionMs: 500,
+      },
+      ui: {
+        enableFullscreen: true,
+        enableAutorotate: true,
+        enableReset: true,
+        enablePan: true,
+        autorotateDefaultOn: false,
+      },
+      transitions: {
+        sceneFadeMs: 300,
+      },
+      performanceProfile: {
+        enabled: true,
+        firstLoadIntroParticleCount: 0,
+        firstLoadParticleDurationMs: -1,
+        firstLoadDisableStaticPointCloud: true,
+        maxDevicePixelRatio: 0,
+      },
+    };
+
+    const result = validateSceneConfig(invalid);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.join(' ')).toContain('performanceProfile.firstLoadIntroParticleCount');
+      expect(result.errors.join(' ')).toContain('performanceProfile.firstLoadParticleDurationMs');
+      expect(result.errors.join(' ')).toContain('performanceProfile.maxDevicePixelRatio');
     }
   });
 

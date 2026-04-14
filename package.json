@@ -9,7 +9,12 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "convert:ksplat": "node scripts/convert-splat.mjs --preset balanced --format ksplat",
+    "convert:ksplat:speed": "node scripts/convert-splat.mjs --preset speed --format ksplat",
+    "convert:ksplat:quality": "node scripts/convert-splat.mjs --preset quality --format ksplat",
+    "convert:spz": "node scripts/convert-splat.mjs --preset balanced --format spz",
+    "bench:startup": "node scripts/bench-startup.mjs --samples 5"
   },
   "dependencies": {
     "@mkkellogg/gaussian-splats-3d": "0.4.7",
@@ -23,6 +28,7 @@
     "eslint": "9.39.2",
     "eslint-config-prettier": "9.1.0",
     "jsdom": "25.0.1",
+    "playwright": "^1.59.1",
     "prettier": "3.4.2",
     "typescript": "5.7.2",
     "vite": "5.4.21",

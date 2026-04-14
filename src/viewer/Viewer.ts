@@ -70,6 +70,13 @@ export class Viewer {
   private idleRotateResumeTimer = 0;
   private currentIdleRotateSpeed = 0.35;
   private introInProgress: Promise<void> | null = null;
+  private loadStartedAtMs = 0;
+  private firstFrameLogged = false;
+  private introStartedAtMs = 0;
+  private lastLoadMetrics = {
+    assetFetchMs: 0,
+    decodeInitMs: 0,
+  };
   private readonly onUserInteraction = (): void => {
     this.cameraController.cancelAnimation();
     if (!this.autoRotate) {
@@ -164,9 +171,12 @@ export class Viewer {
     }
 
     try {
+      this.loadStartedAtMs = performance.now();
+      this.firstFrameLogged = false;
       this.annotationManager.clear();
       this.ui.clearError();
       const config = await this.sceneManager.loadScene(sceneId);
+      this.lastLoadMetrics = this.splatRenderer.getAndResetLoadMetrics();
       const savedAnnotations = await this.annotationPersistence.load(sceneId);
       const mergedConfig: SceneConfig = savedAnnotations
         ? { ...config, annotations: savedAnnotations }
@@ -265,6 +275,11 @@ export class Viewer {
   private applySceneConfig(config: SceneConfig): void {
     this.cameraController.applyLimits(config.camera.limits, config.ui.enablePan);
     this.fitCameraToContent(config);
+    const maxDpr = config.performanceProfile.enabled
+      ? Math.max(0.75, config.performanceProfile.maxDevicePixelRatio)
+      : 1.25;
+    this.webglRenderer.setPixelRatio(Math.min(window.devicePixelRatio, maxDpr));
+    this.syncViewport();
     this.currentIdleRotateSpeed = config.presentation.idleRotateSpeed;
     const defaultAutoRotate = this.autorotateOverride ?? (config.ui.autorotateDefaultOn && config.ui.enableAutorotate);
     this.autoRotate = defaultAutoRotate;
@@ -336,6 +351,13 @@ export class Viewer {
 
   private onFrame = (): void => {
     const now = performance.now();
+    if (!this.firstFrameLogged && this.loadStartedAtMs > 0) {
+      this.firstFrameLogged = true;
+      const firstFrameMs = Math.max(0, now - this.loadStartedAtMs);
+      console.info(
+        `[perf] asset_fetch_ms=${this.lastLoadMetrics.assetFetchMs.toFixed(1)} decode_init_ms=${this.lastLoadMetrics.decodeInitMs.toFixed(1)} first_frame_ms=${firstFrameMs.toFixed(1)}`,
+      );
+    }
     this.cameraController.update(now);
     this.splatRenderer.setInteriorCameraPosition(this.camera.position);
     this.splatRenderer.update();
@@ -360,6 +382,7 @@ export class Viewer {
       return;
     }
     this.cameraController.setAutoRotate(false, this.currentIdleRotateSpeed);
+    this.introStartedAtMs = performance.now();
     const reveal = this.getIntroRevealConfig(this.activeConfig);
     await this.sceneManager.resetActiveRevealStart();
     const activeHandle = this.sceneManager.getActiveHandle();
@@ -384,6 +407,18 @@ export class Viewer {
       pointCloudFadeOutMs = this.activeConfig.cinematicReveal.pointCloudFadeOutMs;
       zoomOutFactor = this.activeConfig.cinematicReveal.zoomOutFactor;
     }
+    const performanceProfile = this.activeConfig.performanceProfile;
+    const firstVisitIntroOptimization =
+      performanceProfile.enabled && this.shouldApplyFirstLoadIntroOptimization();
+    if (firstVisitIntroOptimization) {
+      particleDurationMs = Math.min(
+        Math.max(220, performanceProfile.firstLoadParticleDurationMs),
+        particleDurationMs > 0 ? particleDurationMs : performanceProfile.firstLoadParticleDurationMs,
+      );
+      if (performanceProfile.firstLoadDisableStaticPointCloud) {
+        staticPointCloud = false;
+      }
+    }
     if (
       !this.reducedMotion &&
       (zoomOutFactor > 1.001 || Math.abs(this.activeConfig.cinematicReveal.zoomStartYOffset) > 0.001)
@@ -402,7 +437,9 @@ export class Viewer {
       reveal.particleIntro.particleCount > 0
     ) {
       const sampleCloud = this.splatRenderer.getSplatSampleCloud(activeHandle.id, {
-        maxSamples: reveal.particleIntro.particleCount,
+        maxSamples: firstVisitIntroOptimization
+          ? Math.min(reveal.particleIntro.particleCount, performanceProfile.firstLoadIntroParticleCount)
+          : reveal.particleIntro.particleCount,
         randomize: true,
         space: 'local',
         includeColors: true,
@@ -493,6 +530,11 @@ export class Viewer {
     }
     if (spinPromises.length > 0) {
       await Promise.allSettled(spinPromises);
+    }
+    const introCompleteMs = Math.max(0, performance.now() - this.introStartedAtMs);
+    console.info(`[perf] intro_complete_ms=${introCompleteMs.toFixed(1)}`);
+    if (firstVisitIntroOptimization) {
+      this.markFirstLoadIntroOptimizationApplied();
     }
     const shouldAutoRotate = this.shouldEnableAutoRotateAfterIntro(this.activeConfig);
     this.autoRotate = shouldAutoRotate;
@@ -698,6 +740,22 @@ export class Viewer {
     }
     window.clearTimeout(this.idleRotateResumeTimer);
     this.idleRotateResumeTimer = 0;
+  }
+
+  private shouldApplyFirstLoadIntroOptimization(): boolean {
+    try {
+      return window.localStorage.getItem('hg:firstLoadIntroOptimizationApplied') !== '1';
+    } catch {
+      return false;
+    }
+  }
+
+  private markFirstLoadIntroOptimizationApplied(): void {
+    try {
+      window.localStorage.setItem('hg:firstLoadIntroOptimizationApplied', '1');
+    } catch {
+      // Ignore storage failures.
+    }
   }
 
   private async saveAnnotations(): Promise<void> {

@@ -6,6 +6,7 @@ import {
   SplatFitData,
   SplatHandle,
   SplatSampleCloud,
+  RuntimeLoadMetrics,
   SplatRenderer,
   SplatRevealBounds,
   SplatRevealParams,
@@ -107,6 +108,11 @@ export class GaussianSplatRenderer implements SplatRenderer {
   private sceneMutationQueue: Promise<void> = Promise.resolve();
   private readonly splatBlobUrlCache = new Map<string, Promise<string>>();
   private readonly transientBlobUrls = new Set<string>();
+  private currentFetchMs = 0;
+  private lastLoadMetrics: RuntimeLoadMetrics = {
+    assetFetchMs: 0,
+    decodeInitMs: 0,
+  };
 
   async initialize(context: RendererContext): Promise<void> {
     this.viewer = this.createViewer(context);
@@ -220,6 +226,12 @@ export class GaussianSplatRenderer implements SplatRenderer {
 
   getSplatSamplePoints(id: string, options: SplatSampleOptions): THREE.Vector3[] {
     return this.getSplatSampleCloud(id, options).points;
+  }
+
+  getAndResetLoadMetrics(): RuntimeLoadMetrics {
+    const metrics = { ...this.lastLoadMetrics };
+    this.lastLoadMetrics = { assetFetchMs: 0, decodeInitMs: 0 };
+    return metrics;
   }
 
   setInteriorView(config: InteriorViewConfig): void {
@@ -370,6 +382,8 @@ export class GaussianSplatRenderer implements SplatRenderer {
     if (!this.viewer) {
       throw new Error('Renderer not initialized.');
     }
+    this.currentFetchMs = 0;
+    const loadStart = performance.now();
     if (assets.length === 1) {
       const asset = assets[0];
       const source = await this.resolveAssetSource(asset);
@@ -387,6 +401,10 @@ export class GaussianSplatRenderer implements SplatRenderer {
       } catch (error) {
         throw new Error(this.buildAssetLoadErrorMessage([asset], error));
       }
+      this.lastLoadMetrics = {
+        assetFetchMs: this.currentFetchMs,
+        decodeInitMs: Math.max(0, performance.now() - loadStart),
+      };
       return;
     }
 
@@ -414,6 +432,10 @@ export class GaussianSplatRenderer implements SplatRenderer {
     } catch (error) {
       throw new Error(this.buildAssetLoadErrorMessage(assets, error));
     }
+    this.lastLoadMetrics = {
+      assetFetchMs: this.currentFetchMs,
+      decodeInitMs: Math.max(0, performance.now() - loadStart),
+    };
   }
 
   private async resolveAssetSource(asset: SplatAssetConfig): Promise<ResolvedAssetSource> {
@@ -453,11 +475,13 @@ export class GaussianSplatRenderer implements SplatRenderer {
     }
 
     const fetchPromise = (async () => {
+      const start = performance.now();
       const response = await fetch(sourceUrl);
       if (!response.ok) {
         throw new Error(`Failed to fetch splat source "${sourceUrl}" (${response.status} ${response.statusText}).`);
       }
       const fileData = await response.arrayBuffer();
+      this.currentFetchMs += Math.max(0, performance.now() - start);
       const blobUrl = URL.createObjectURL(new Blob([fileData], { type: 'application/octet-stream' }));
       this.transientBlobUrls.add(blobUrl);
       return blobUrl;
@@ -774,7 +798,7 @@ export class GaussianSplatRenderer implements SplatRenderer {
       rootElement: context.rootElement,
       renderMode: GaussianSplats3D.RenderMode.Always,
       sceneRevealMode: GaussianSplats3D.SceneRevealMode.Instant,
-      enableOptionalEffects: true,
+      enableOptionalEffects: false,
       sharedMemoryForWorkers: false,
       gpuAcceleratedSort: false,
       optimizeSplatData: false,
