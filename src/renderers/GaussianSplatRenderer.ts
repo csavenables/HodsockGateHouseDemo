@@ -13,12 +13,18 @@ import {
   SplatSampleOptions,
 } from './types';
 
-const RUNTIME_SUPPORTED_EXTENSIONS = ['.ply', '.splat', '.ksplat', '.spz'] as const;
-const SOURCE_ONLY_EXTENSIONS = ['.sog'] as const;
+const RUNTIME_SUPPORTED_EXTENSIONS = ['.ply', '.splat', '.ksplat', '.spz', '.sog'] as const;
 const MAX_REVEAL_SCENES = 32;
 const REVEAL_PATCH_FLAG = '__splatRevealPatched';
 const ENABLE_SHADER_REVEAL = true;
 const INTERIOR_PATCH_FLAG = '__splatInteriorPatched';
+const SOG_DECODE_OPTIONS = {
+  iterations: 1,
+  lodSelect: [],
+  unbundled: false,
+  lodChunkCount: 512,
+  lodChunkExtent: 16,
+};
 
 interface RevealMaterialBinding {
   material: THREE.ShaderMaterial;
@@ -56,6 +62,31 @@ interface ResolvedAssetSource {
   path: string;
   format?: number;
   extension: string | null;
+}
+
+interface SogTransformModule {
+  combine(dataTables: unknown[]): unknown;
+  getInputFormat(filename: string): string;
+  getOutputFormat(filename: string, options: Record<string, unknown>): string;
+  WebPCodec?: { wasmUrl: string | null };
+  MemoryFileSystem: new () => { results: Map<string, Uint8Array> };
+  MemoryReadFileSystem: new () => { set(name: string, data: Uint8Array): void };
+  readFile(args: {
+    filename: string;
+    inputFormat: string;
+    options: Record<string, unknown>;
+    params: unknown[];
+    fileSystem: unknown;
+  }): Promise<unknown[]>;
+  writeFile(
+    args: {
+      filename: string;
+      outputFormat: string;
+      dataTable: unknown;
+      options: Record<string, unknown>;
+    },
+    fileSystem: unknown,
+  ): Promise<void>;
 }
 
 function toQuaternionArray(rotationDegrees: [number, number, number]): [number, number, number, number] {
@@ -109,8 +140,9 @@ export class GaussianSplatRenderer implements SplatRenderer {
   private sceneGraphMutating = false;
   private sceneMutationQueue: Promise<void> = Promise.resolve();
   private readonly splatBlobUrlCache = new Map<string, Promise<string>>();
+  private readonly sogBlobUrlCache = new Map<string, Promise<string>>();
   private readonly transientBlobUrls = new Set<string>();
-  private warnedSogFallback = false;
+  private sogTransformModulePromise: Promise<SogTransformModule> | null = null;
   private currentFetchMs = 0;
   private lastLoadMetrics: RuntimeLoadMetrics = {
     assetFetchMs: 0,
@@ -446,29 +478,11 @@ export class GaussianSplatRenderer implements SplatRenderer {
   private async resolveAssetSource(asset: SplatAssetConfig): Promise<ResolvedAssetSource> {
     const extension = getAssetExtension(asset.src);
     if (extension === '.sog') {
-      const fallbackSrc = asset.fallbackSrc;
-      if (!fallbackSrc) {
-        throw new Error(
-          `Asset "${asset.src}" is SOG and requires "fallbackSrc" for this runtime.`,
-        );
-      }
-      const fallbackExtension = getAssetExtension(fallbackSrc);
-      const fallbackFormat = this.resolveSceneFormat(fallbackExtension);
-      if (!fallbackFormat || !fallbackExtension) {
-        throw new Error(
-          `Asset "${asset.src}" fallback "${fallbackSrc}" must use one of: ${RUNTIME_SUPPORTED_EXTENSIONS.join(', ')}.`,
-        );
-      }
-      if (!this.warnedSogFallback) {
-        console.info(
-          `[assets] SOG source detected for "${asset.id}". Runtime fallback is using "${fallbackExtension}" (${fallbackSrc}).`,
-        );
-        this.warnedSogFallback = true;
-      }
+      const blobUrl = await this.getSogBlobUrl(asset.src);
       return {
-        path: fallbackSrc,
-        format: fallbackFormat,
-        extension: fallbackExtension,
+        path: blobUrl,
+        format: GaussianSplats3D.SceneFormat.Ply,
+        extension: '.ply',
       };
     }
     const format = this.resolveSceneFormat(extension);
@@ -528,12 +542,95 @@ export class GaussianSplatRenderer implements SplatRenderer {
     }
   }
 
+  private async getSogBlobUrl(sourceUrl: string): Promise<string> {
+    const cached = this.sogBlobUrlCache.get(sourceUrl);
+    if (cached) {
+      return cached;
+    }
+
+    const convertPromise = (async () => {
+      const fetchStart = performance.now();
+      const [response, sogTransform] = await Promise.all([
+        fetch(sourceUrl, { cache: 'force-cache' }),
+        this.getSogTransformModule(),
+      ]);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch SOG source "${sourceUrl}" (${response.status} ${response.statusText}).`);
+      }
+      const sogData = new Uint8Array(await response.arrayBuffer());
+      this.currentFetchMs += Math.max(0, performance.now() - fetchStart);
+
+      const readFs = new sogTransform.MemoryReadFileSystem();
+      const inputName = 'scene.sog';
+      readFs.set(inputName, sogData);
+      const dataTables = await sogTransform.readFile({
+        filename: inputName,
+        inputFormat: sogTransform.getInputFormat(inputName),
+        options: SOG_DECODE_OPTIONS,
+        params: [],
+        fileSystem: readFs,
+      });
+      if (!Array.isArray(dataTables) || dataTables.length === 0) {
+        throw new Error(`Failed to decode SOG source "${sourceUrl}".`);
+      }
+
+      const combinedTable =
+        dataTables.length === 1 ? dataTables[0] : sogTransform.combine(dataTables);
+      const writeFs = new sogTransform.MemoryFileSystem();
+      const outputName = 'scene.ply';
+      await sogTransform.writeFile(
+        {
+          filename: outputName,
+          outputFormat: sogTransform.getOutputFormat(outputName, SOG_DECODE_OPTIONS),
+          dataTable: combinedTable,
+          options: SOG_DECODE_OPTIONS,
+        },
+        writeFs,
+      );
+      const plyData = writeFs.results.get(outputName);
+      if (!plyData) {
+        throw new Error(`Failed to convert SOG source "${sourceUrl}" to PLY.`);
+      }
+      const blobUrl = URL.createObjectURL(new Blob([plyData], { type: 'application/octet-stream' }));
+      this.transientBlobUrls.add(blobUrl);
+      return blobUrl;
+    })();
+
+    this.sogBlobUrlCache.set(sourceUrl, convertPromise);
+    try {
+      return await convertPromise;
+    } catch (error) {
+      this.sogBlobUrlCache.delete(sourceUrl);
+      throw error;
+    }
+  }
+
+  private getSogTransformModule(): Promise<SogTransformModule> {
+    if (this.sogTransformModulePromise) {
+      return this.sogTransformModulePromise;
+    }
+    this.sogTransformModulePromise = (async () => {
+      const [module, wasmUrlModule] = await Promise.all([
+        import('@playcanvas/splat-transform'),
+        import('@playcanvas/splat-transform/lib/webp.wasm?url'),
+      ]);
+      const typedModule = module as SogTransformModule;
+      const wasmUrl = (wasmUrlModule as { default?: string }).default ?? null;
+      if (typedModule.WebPCodec && wasmUrl) {
+        typedModule.WebPCodec.wasmUrl = wasmUrl;
+      }
+      return typedModule;
+    })();
+    return this.sogTransformModulePromise;
+  }
+
   private releaseTransientBlobUrls(): void {
     for (const blobUrl of this.transientBlobUrls) {
       URL.revokeObjectURL(blobUrl);
     }
     this.transientBlobUrls.clear();
     this.splatBlobUrlCache.clear();
+    this.sogBlobUrlCache.clear();
   }
 
   private createSplatHandle(asset: SplatAssetConfig, object3D: THREE.Object3D, sceneIndex: number): SplatHandle {
@@ -841,34 +938,16 @@ export class GaussianSplatRenderer implements SplatRenderer {
   private ensureSupportedAssetFormats(assets: SplatAssetConfig[]): void {
     for (const asset of assets) {
       const extension = getAssetExtension(asset.src);
-      if (
-        extension &&
-        RUNTIME_SUPPORTED_EXTENSIONS.includes(extension as (typeof RUNTIME_SUPPORTED_EXTENSIONS)[number])
-      ) {
-        continue;
-      }
-      if (extension && SOURCE_ONLY_EXTENSIONS.includes(extension as (typeof SOURCE_ONLY_EXTENSIONS)[number])) {
-        const fallbackExtension = asset.fallbackSrc ? getAssetExtension(asset.fallbackSrc) : null;
-        if (
-          fallbackExtension &&
-          RUNTIME_SUPPORTED_EXTENSIONS.includes(
-            fallbackExtension as (typeof RUNTIME_SUPPORTED_EXTENSIONS)[number],
-          )
-        ) {
-          continue;
-        }
-        throw new Error(
-          `Asset "${asset.src}" is SOG and needs "fallbackSrc" using ${RUNTIME_SUPPORTED_EXTENSIONS.join(', ')}.`,
-        );
-      }
       if (!extension) {
         throw new Error(
           `Unsupported asset format for "${asset.src}". Supported runtime formats: ${RUNTIME_SUPPORTED_EXTENSIONS.join(', ')}.`,
         );
       }
-      throw new Error(
-        `Unsupported asset format for "${asset.src}". Supported runtime formats: ${RUNTIME_SUPPORTED_EXTENSIONS.join(', ')}.`,
-      );
+      if (!RUNTIME_SUPPORTED_EXTENSIONS.includes(extension as (typeof RUNTIME_SUPPORTED_EXTENSIONS)[number])) {
+        throw new Error(
+          `Unsupported asset format for "${asset.src}". Supported runtime formats: ${RUNTIME_SUPPORTED_EXTENSIONS.join(', ')}.`,
+        );
+      }
     }
   }
 

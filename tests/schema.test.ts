@@ -102,6 +102,79 @@ describe('validateSceneConfig', () => {
     }
   });
 
+  it('rejects hodsock fallbackSrc in sog-native mode', () => {
+    const invalid = {
+      id: 'hodsock-gatehouse',
+      title: 'Hodsock',
+      assets: [
+        {
+          id: 'main',
+          src: '/scenes/hodsock-gatehouse/splats/HodsockCombined30k.sog',
+          fallbackSrc: '/scenes/hodsock-gatehouse/splats/HodsockCombined30k.ksplat',
+          transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+          visibleDefault: true,
+        },
+      ],
+      camera: {
+        home: { position: [0, 0, 2], target: [0, 0, 0], fov: 50 },
+        limits: { minDistance: 0.4, maxDistance: 4, minPolarAngle: 0.1, maxPolarAngle: 2.9 },
+        transitionMs: 500,
+      },
+      ui: {
+        enableFullscreen: true,
+        enableAutorotate: true,
+        enableReset: true,
+        enablePan: true,
+        autorotateDefaultOn: false,
+      },
+      transitions: {
+        sceneFadeMs: 300,
+      },
+    };
+
+    const result = validateSceneConfig(invalid);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.join(' ')).toContain('does not allow fallbackSrc');
+    }
+  });
+
+  it('rejects non-sog asset source for hodsock', () => {
+    const invalid = {
+      id: 'hodsock-gatehouse',
+      title: 'Hodsock',
+      assets: [
+        {
+          id: 'main',
+          src: '/scenes/hodsock-gatehouse/splats/HodsockCombined30k.ksplat',
+          transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+          visibleDefault: true,
+        },
+      ],
+      camera: {
+        home: { position: [0, 0, 2], target: [0, 0, 0], fov: 50 },
+        limits: { minDistance: 0.4, maxDistance: 4, minPolarAngle: 0.1, maxPolarAngle: 2.9 },
+        transitionMs: 500,
+      },
+      ui: {
+        enableFullscreen: true,
+        enableAutorotate: true,
+        enableReset: true,
+        enablePan: true,
+        autorotateDefaultOn: false,
+      },
+      transitions: {
+        sceneFadeMs: 300,
+      },
+    };
+
+    const result = validateSceneConfig(invalid);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.join(' ')).toContain('requires ".sog"');
+    }
+  });
+
   it('rejects configs with more than 5 assets', () => {
     const baseAsset = {
       id: 'a',

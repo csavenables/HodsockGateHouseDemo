@@ -5,7 +5,6 @@
     {
       "id": "gatehouse_main",
       "src": "scenes/hodsock-gatehouse/splats/HodsockCombined30k.sog",
-      "fallbackSrc": "scenes/hodsock-gatehouse/splats/HodsockCombined30k.ksplat",
       "transform": {
         "position": [0, 0, 0],
         "rotation": [180, -203, 0],
@@ -51,7 +50,7 @@
     "staticPointCloud": false,
     "particleLeadMs": 1,
     "splatDelayMs": 0,
-    "sphereExpandMs": 3600,
+    "sphereExpandMs": 10800,
     "overlapMs": 0,
     "pointCloudFadeOutMs": 1200,
     "zoomOutFactor": 1.12,
@@ -60,15 +59,15 @@
   },
   "performanceProfile": {
     "enabled": true,
-    "firstLoadIntroParticleCount": 2200,
-    "firstLoadParticleDurationMs": 1400,
+    "firstLoadIntroParticleCount": 900,
+    "firstLoadParticleDurationMs": 900,
     "firstLoadDisableStaticPointCloud": true,
-    "maxDevicePixelRatio": 1
+    "maxDevicePixelRatio": 0.9
   },
   "reveal": {
     "enabled": true,
     "mode": "bottomSphere",
-    "durationMs": 3600,
+    "durationMs": 10800,
     "band": 0.14,
     "ease": "easeInOut",
     "affectAlpha": true,
@@ -76,15 +75,15 @@
     "startPadding": -0.08,
     "endPadding": 0.03,
     "particleIntro": {
-      "durationMs": 4600,
-      "particleCount": 4200,
+      "durationMs": 2800,
+      "particleCount": 1800,
       "spread": 0.7,
-      "size": 0.024,
+      "size": 0.022,
       "color": "#d8e8ff",
       "blend": "additive"
     },
     "bottomSphere": {
-      "durationMs": 3600,
+      "durationMs": 10800,
       "feather": 0.28,
       "originAnchor": "top",
       "originYOffset": 0.04,

@@ -754,6 +754,18 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
     errors.push('"annotations.ui.occlusion.epsilon" must be >= 0.');
   }
 
+  if (config.id === 'hodsock-gatehouse') {
+    for (const asset of config.assets) {
+      const normalized = asset.src.toLowerCase();
+      if (!normalized.endsWith('.sog')) {
+        errors.push(`Hodsock SOG-native mode requires ".sog" asset sources. Invalid src: "${asset.src}".`);
+      }
+      if (asset.fallbackSrc) {
+        errors.push(`Hodsock SOG-native mode does not allow fallbackSrc. Remove fallbackSrc from "${asset.id}".`);
+      }
+    }
+  }
+
   config.interiorView.softness = Math.min(0.6, Math.max(0.05, config.interiorView.softness));
   config.interiorView.fadeAlpha = Math.min(1, Math.max(0, config.interiorView.fadeAlpha));
   config.annotations.ui.occlusion.fadeAlpha = Math.min(1, Math.max(0, config.annotations.ui.occlusion.fadeAlpha));

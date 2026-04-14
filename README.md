@@ -7,8 +7,8 @@
 - TypeScript strict mode with a modular viewer architecture.
 - Scene config loading and runtime schema validation with friendly error states.
 - Configurable camera home view, orbit/pan/zoom limits, and smooth reset transitions.
-- Multi-splat scene loading with supported runtime formats: `.ply`, `.splat`, `.ksplat`, `.spz`.
-- SOG-first source pipeline via `splat-transform`, with non-destructive runtime fallback.
+- Multi-splat scene loading with supported runtime formats: `.ply`, `.splat`, `.ksplat`, `.spz`, `.sog`.
+- Hodsock scene uses SOG-native runtime loading (no KSPLAT fallback in production scene config).
 - Fade-out/fade-in scene transitions and basic loading UX.
 - Per-splat bottom-up reveal / downward dissolve driven by `scene.json` reveal config.
 - Optional `particleIntro` reveal mode for hero-style splat intros.
@@ -135,7 +135,7 @@ Combined size + startup benchmark:
 npm run bench:size-and-startup
 ```
 
-Note: current runtime remains `@mkkellogg/gaussian-splats-3d`, so scene assets can declare a `.sog` `src` with `fallbackSrc` (for example `.ksplat`) to preserve camera/intro behavior unchanged while the compression pipeline is evaluated.
+Note: Hodsock scene policy is SOG-native (`assets[].src` must be `.sog` and `fallbackSrc` is rejected by schema validation).
 
 ### Performance Profile (Scene JSON)
 
