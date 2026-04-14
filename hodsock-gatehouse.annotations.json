@@ -104,9 +104,15 @@
       }
     ],
     "ui": {
-      "showTooltip": false,
-      "showNav": false,
+      "showTooltip": true,
+      "showNav": true,
+      "wrapNavigation": true,
       "pinStyle": "numbered",
+      "declutter": {
+        "selectedOnlyStrong": true,
+        "unselectedAlpha": 0.1,
+        "maxVisibleUnselected": 6
+      },
       "occlusion": {
         "enabled": true,
         "mode": "depth",
