@@ -41,7 +41,7 @@ export class Viewer {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(50, 1, 0.01, 100);
   private readonly webglRenderer = new THREE.WebGLRenderer({
-    antialias: false,
+    antialias: true,
     alpha: true,
     powerPreference: 'high-performance',
   });
@@ -88,7 +88,7 @@ export class Viewer {
     options: { embedMode?: boolean; autorotateOverride?: boolean | null } = {},
   ) {
     this.autorotateOverride = options.autorotateOverride ?? null;
-    this.webglRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
+    this.webglRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.webglRenderer.setSize(container.clientWidth, container.clientHeight);
     this.webglRenderer.setAnimationLoop(this.onFrame);
     this.webglRenderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -273,7 +273,7 @@ export class Viewer {
     this.fitCameraToContent(config);
     const maxDpr = config.performanceProfile.enabled
       ? Math.max(0.75, config.performanceProfile.maxDevicePixelRatio)
-      : 1.25;
+      : 2;
     this.webglRenderer.setPixelRatio(Math.min(window.devicePixelRatio, maxDpr));
     this.syncViewport();
     this.currentIdleRotateSpeed = config.presentation.idleRotateSpeed;
