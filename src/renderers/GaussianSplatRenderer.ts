@@ -1,156 +1,260 @@
 import * as THREE from 'three';
-import * as GaussianSplats3D from '@mkkellogg/gaussian-splats-3d';
-import { InteriorViewConfig, SplatAssetConfig } from '../config/schema';
+import * as pc from 'playcanvas';
+import {
+  InteriorViewConfig,
+  SceneConfig,
+  SogRuntimeConfig,
+  SplatAssetConfig,
+} from '../config/schema';
 import {
   RendererContext,
+  RuntimeLoadMetrics,
   SplatFitData,
   SplatHandle,
-  SplatSampleCloud,
-  RuntimeLoadMetrics,
   SplatRenderer,
   SplatRevealBounds,
   SplatRevealParams,
+  SplatSampleCloud,
   SplatSampleOptions,
 } from './types';
 
-const RUNTIME_SUPPORTED_EXTENSIONS = ['.ply', '.splat', '.ksplat', '.spz', '.sog'] as const;
-const MAX_REVEAL_SCENES = 32;
-const REVEAL_PATCH_FLAG = '__splatRevealPatched';
-const ENABLE_SHADER_REVEAL = true;
-const INTERIOR_PATCH_FLAG = '__splatInteriorPatched';
-const SOG_DECODE_OPTIONS = {
-  iterations: 1,
-  lodSelect: [],
-  unbundled: false,
-  lodChunkCount: 512,
-  lodChunkExtent: 16,
+const RUNTIME_SUPPORTED_EXTENSIONS = ['.sog', 'lod-meta.json'] as const;
+const EPSILON = 0.00001;
+
+const DEFAULT_SOG_RUNTIME: SogRuntimeConfig = {
+  unified: true,
+  highQualitySH: false,
+  splatBudget: 0,
+  lodBaseDistance: 5,
+  lodMultiplier: 3,
+  lodRangeMin: 0,
+  lodRangeMax: 10,
+  lodUpdateDistance: 0.8,
+  lodUpdateAngle: 0,
+  lodUnderfillLimit: 1,
+  colorUpdateDistance: 0.3,
+  colorUpdateAngle: 2,
+  cooldownTicks: 100,
 };
 
-interface RevealMaterialBinding {
-  material: THREE.ShaderMaterial;
-  uniforms: {
-    uRevealEnabled: { value: number[] };
-    uRevealY: { value: number[] };
-    uRevealBand: { value: number[] };
-    uRevealMinY: { value: number[] };
-    uRevealMaxY: { value: number[] };
-    uRevealMode: { value: number[] };
-    uSphereEnabled: { value: number[] };
-    uSphereOriginX: { value: number[] };
-    uSphereOriginY: { value: number[] };
-    uSphereOriginZ: { value: number[] };
-    uSphereRadius: { value: number[] };
-    uSphereFeather: { value: number[] };
-    uClipBottomEnabled: { value: number[] };
-    uClipBottomY: { value: number[] };
-    uRevealAffectAlpha: { value: number[] };
-    uRevealAffectSize: { value: number[] };
-  };
-}
-
-interface InternalViewer {
-  splatMesh?: {
-    material?: THREE.ShaderMaterial;
-  };
-}
-
-interface RevealSceneObject extends THREE.Object3D {
-  opacity?: number;
-}
-
-interface ResolvedAssetSource {
-  path: string;
-  format?: number;
-  extension: string | null;
-}
-
-interface SogTransformModule {
-  combine(dataTables: unknown[]): unknown;
-  getInputFormat(filename: string): string;
-  getOutputFormat(filename: string, options: Record<string, unknown>): string;
-  WebPCodec?: { wasmUrl: string | null };
-  MemoryFileSystem: new () => { results: Map<string, Uint8Array> };
-  MemoryReadFileSystem: new () => { set(name: string, data: Uint8Array): void };
-  readFile(args: {
-    filename: string;
-    inputFormat: string;
-    options: Record<string, unknown>;
-    params: unknown[];
-    fileSystem: unknown;
-  }): Promise<unknown[]>;
-  writeFile(
-    args: {
-      filename: string;
-      outputFormat: string;
-      dataTable: unknown;
-      options: Record<string, unknown>;
-    },
-    fileSystem: unknown,
-  ): Promise<void>;
-}
-
-function toQuaternionArray(rotationDegrees: [number, number, number]): [number, number, number, number] {
-  const euler = new THREE.Euler(
-    THREE.MathUtils.degToRad(rotationDegrees[0]),
-    THREE.MathUtils.degToRad(rotationDegrees[1]),
-    THREE.MathUtils.degToRad(rotationDegrees[2]),
-  );
-  const q = new THREE.Quaternion().setFromEuler(euler);
-  return [q.x, q.y, q.z, q.w];
-}
-
-function makeRevealUniformArrays(defaultValue: number): number[] {
-  return new Array(MAX_REVEAL_SCENES).fill(defaultValue);
-}
-
-interface InteriorMaterialBinding {
-  material: THREE.ShaderMaterial;
-  uniforms: {
-    uInteriorEnabled: { value: number };
-    uInteriorTarget: { value: THREE.Vector3 };
-    uInteriorRadius: { value: number };
-    uInteriorSoftness: { value: number };
-    uInteriorFadeAlpha: { value: number };
-    uInteriorMaxDist: { value: number };
-    uInteriorAffectSize: { value: number };
-    uInteriorCameraPos: { value: THREE.Vector3 };
-  };
-}
-
-const INTERIOR_DEFAULTS: InteriorViewConfig = {
+const DEFAULT_REVEAL_PARAMS = {
   enabled: false,
-  target: [0, 0, 0],
-  radius: 0.45,
-  softness: 0.2,
-  fadeAlpha: 0.15,
-  maxDistance: 20,
-  affectSize: false,
+  mode: 'yRamp' as const,
+  revealY: 0,
+  band: 0.12,
+  sphereRadius: 0.0001,
+  sphereFeather: 0.12,
+  clipBottomEnabled: false,
+  clipBottomY: 0,
+  affectAlpha: true,
 };
+
+const REVEAL_WORKBUFFER_MODIFIER_GLSL = `
+uniform float uRevealEnabled;
+uniform float uRevealMode;
+uniform float uRevealY;
+uniform float uRevealBand;
+uniform vec3 uSphereOrigin;
+uniform float uSphereRadius;
+uniform float uSphereFeather;
+uniform float uClipBottomEnabled;
+uniform float uClipBottomY;
+uniform float uRevealAffectAlpha;
+uniform vec3 uScaleMul;
+
+float computeRevealAlpha(vec3 center) {
+  if (uRevealEnabled < 0.5) {
+    return 1.0;
+  }
+  if (uRevealMode < 0.5) {
+    float band = max(0.0001, uRevealBand);
+    return smoothstep(uRevealY - band, uRevealY + band, center.y);
+  }
+  float distToOrigin = distance(center, uSphereOrigin);
+  float feather = max(0.0001, uSphereFeather);
+  float edge = smoothstep(uSphereRadius - feather, uSphereRadius + feather, distToOrigin);
+  return 1.0 - edge;
+}
+
+void modifySplatCenter(inout vec3 center) {
+}
+
+void modifySplatRotationScale(vec3 originalCenter, vec3 modifiedCenter, inout vec4 rotation, inout vec3 scale) {
+  scale *= max(uScaleMul, vec3(0.0001));
+}
+
+void modifySplatColor(vec3 center, inout vec4 color) {
+  if (uClipBottomEnabled > 0.5 && center.y < uClipBottomY) {
+    color.a = 0.0;
+    return;
+  }
+  float revealAlpha = computeRevealAlpha(center);
+  if (uRevealAffectAlpha > 0.5) {
+    color.a *= revealAlpha;
+  }
+}
+`;
+
+interface InternalSplatHandle extends SplatHandle {
+  entity: pc.Entity;
+  component: pc.GSplatComponent;
+  asset: pc.Asset;
+  baseScale: THREE.Vector3;
+  revealParams: SplatRevealParams;
+}
+
+function cloneRuntimeConfig(config: SogRuntimeConfig | undefined): SogRuntimeConfig {
+  if (!config) {
+    return { ...DEFAULT_SOG_RUNTIME };
+  }
+  return {
+    unified: config.unified,
+    highQualitySH: config.highQualitySH,
+    splatBudget: config.splatBudget,
+    lodBaseDistance: config.lodBaseDistance,
+    lodMultiplier: config.lodMultiplier,
+    lodRangeMin: config.lodRangeMin,
+    lodRangeMax: config.lodRangeMax,
+    lodUpdateDistance: config.lodUpdateDistance,
+    lodUpdateAngle: config.lodUpdateAngle,
+    lodUnderfillLimit: config.lodUnderfillLimit,
+    colorUpdateDistance: config.colorUpdateDistance,
+    colorUpdateAngle: config.colorUpdateAngle,
+    cooldownTicks: config.cooldownTicks,
+  };
+}
+
+function getAssetExtension(source: string): string | null {
+  const clean = source.split('?')[0].split('#')[0].toLowerCase();
+  if (clean.endsWith('lod-meta.json')) {
+    return 'lod-meta.json';
+  }
+  const dotIndex = clean.lastIndexOf('.');
+  if (dotIndex < 0) {
+    return null;
+  }
+  return clean.slice(dotIndex);
+}
+
+function toThreeMatrix(source: pc.Mat4): THREE.Matrix4 {
+  return new THREE.Matrix4().fromArray(source.data as unknown as number[]);
+}
+
+function computeAabbCorners(aabb: pc.BoundingBox): THREE.Vector3[] {
+  const c = aabb.center;
+  const e = aabb.halfExtents;
+  const minX = c.x - e.x;
+  const minY = c.y - e.y;
+  const minZ = c.z - e.z;
+  const maxX = c.x + e.x;
+  const maxY = c.y + e.y;
+  const maxZ = c.z + e.z;
+  return [
+    new THREE.Vector3(minX, minY, minZ),
+    new THREE.Vector3(minX, minY, maxZ),
+    new THREE.Vector3(minX, maxY, minZ),
+    new THREE.Vector3(minX, maxY, maxZ),
+    new THREE.Vector3(maxX, minY, minZ),
+    new THREE.Vector3(maxX, minY, maxZ),
+    new THREE.Vector3(maxX, maxY, minZ),
+    new THREE.Vector3(maxX, maxY, maxZ),
+  ];
+}
+
+function cloneRevealParams(params: SplatRevealParams): SplatRevealParams {
+  return {
+    enabled: params.enabled,
+    mode: params.mode,
+    revealY: params.revealY,
+    band: params.band,
+    sphereOrigin: params.sphereOrigin.clone(),
+    sphereRadius: params.sphereRadius,
+    sphereFeather: params.sphereFeather,
+    clipBottomEnabled: params.clipBottomEnabled,
+    clipBottomY: params.clipBottomY,
+    affectAlpha: params.affectAlpha,
+    affectSize: params.affectSize,
+  };
+}
 
 export class GaussianSplatRenderer implements SplatRenderer {
-  private viewer: GaussianSplats3D.Viewer | null = null;
-  private sceneIdOrder: string[] = [];
-  private handles: SplatHandle[] = [];
+  private context: RendererContext | null = null;
+  private app: pc.Application | null = null;
+  private canvas: HTMLCanvasElement | null = null;
+  private cameraEntity: pc.Entity | null = null;
+  private sceneRoot: pc.Entity | null = null;
+  private handles: InternalSplatHandle[] = [];
+  private handleById = new Map<string, InternalSplatHandle>();
   private fitData: SplatFitData | null = null;
-  private warnedRevealFallback = false;
-  private revealBinding: RevealMaterialBinding | null = null;
-  private interiorBinding: InteriorMaterialBinding | null = null;
-  private interiorConfig: InteriorViewConfig = { ...INTERIOR_DEFAULTS };
-  private warnedInteriorFallback = false;
-  private sceneGraphMutating = false;
-  private sceneMutationQueue: Promise<void> = Promise.resolve();
-  private readonly splatBlobUrlCache = new Map<string, Promise<string>>();
-  private readonly sogBlobUrlCache = new Map<string, Promise<string>>();
-  private readonly transientBlobUrls = new Set<string>();
-  private sogTransformModulePromise: Promise<SogTransformModule> | null = null;
   private currentFetchMs = 0;
   private lastLoadMetrics: RuntimeLoadMetrics = {
     assetFetchMs: 0,
     decodeInitMs: 0,
   };
+  private runtimeConfig: SogRuntimeConfig = { ...DEFAULT_SOG_RUNTIME };
 
   async initialize(context: RendererContext): Promise<void> {
-    this.viewer = this.createViewer(context);
+    this.context = context;
+    this.canvas = document.createElement('canvas');
+    this.canvas.className = 'pc-splat-canvas';
+    this.canvas.style.position = 'absolute';
+    this.canvas.style.inset = '0';
+    this.canvas.style.width = '100%';
+    this.canvas.style.height = '100%';
+    this.canvas.style.display = 'block';
+    this.canvas.style.pointerEvents = 'none';
+    this.canvas.style.backgroundColor = '#000000';
+    this.canvas.style.zIndex = '2';
+
+    context.rootElement.style.position = 'relative';
+    context.rootElement.appendChild(this.canvas);
+
+    context.renderer.domElement.style.position = 'absolute';
+    context.renderer.domElement.style.inset = '0';
+    context.renderer.domElement.style.zIndex = '1';
+
+    const app = new pc.Application(this.canvas, {
+      graphicsDeviceOptions: {
+        antialias: false,
+        alpha: true,
+        powerPreference: 'high-performance',
+      },
+    });
+
+    app.scene.ambientLight = new pc.Color(0, 0, 0);
+    app.autoRender = false;
+
+    const cameraEntity = new pc.Entity('pc-camera');
+    cameraEntity.addComponent('camera', {
+      clearColor: new pc.Color(0, 0, 0, 1),
+      fov: context.camera.fov,
+      nearClip: context.camera.near,
+      farClip: context.camera.far,
+    });
+    app.root.addChild(cameraEntity);
+
+    const sceneRoot = new pc.Entity('pc-splat-root');
+    app.root.addChild(sceneRoot);
+
+    this.app = app;
+    this.cameraEntity = cameraEntity;
+    this.sceneRoot = sceneRoot;
+
+    this.applyRuntimeConfigToScene();
+    this.syncViewportAndCamera();
+
+    app.start();
+    app.renderNextFrame = true;
+  }
+
+  configureScene(config: SceneConfig): void {
+    this.runtimeConfig = cloneRuntimeConfig(config.sogRuntime);
+    this.applyRuntimeConfigToScene();
+    for (const handle of this.handles) {
+      this.applyRuntimeConfigToComponent(handle.component);
+      this.applyRevealParams(handle);
+    }
+    this.app?.renderNextFrame && (this.app.renderNextFrame = true);
   }
 
   async loadSplat(asset: SplatAssetConfig): Promise<SplatHandle> {
@@ -159,39 +263,38 @@ export class GaussianSplatRenderer implements SplatRenderer {
   }
 
   async loadSplats(assets: SplatAssetConfig[]): Promise<SplatHandle[]> {
-    if (!this.viewer) {
+    if (!this.app || !this.sceneRoot) {
       throw new Error('Renderer not initialized.');
     }
     if (assets.length === 0) {
       return [];
     }
-    if (this.sceneIdOrder.length + assets.length > MAX_REVEAL_SCENES) {
-      throw new Error(`Reveal system supports up to ${MAX_REVEAL_SCENES} loaded splat handles.`);
-    }
     this.ensureSupportedAssetFormats(assets);
 
-    return this.withSceneMutation(async () => {
-      const sceneIndexStart = this.sceneIdOrder.length;
-      await this.loadAssetsWithViewer(assets);
+    this.currentFetchMs = 0;
+    const loadStart = performance.now();
+    const loaded: InternalSplatHandle[] = [];
 
-      const newHandles: SplatHandle[] = [];
-      for (let i = 0; i < assets.length; i += 1) {
-        const sceneIndex = sceneIndexStart + i;
-        const scene = this.viewer!.getSplatScene(sceneIndex);
-        const handle = this.createSplatHandle(assets[i], scene, sceneIndex);
-        newHandles.push(handle);
-      }
+    for (const assetConfig of assets) {
+      const handle = await this.loadSingleAsset(assetConfig);
+      loaded.push(handle);
+      this.handles.push(handle);
+      this.handleById.set(handle.id, handle);
+    }
 
-      this.sceneIdOrder.push(...assets.map((asset) => asset.id));
-      this.handles.push(...newHandles);
-      this.fitData = null;
-      this.viewer!.forceRenderNextFrame();
-      return newHandles;
-    });
+    this.fitData = null;
+    this.lastLoadMetrics = {
+      assetFetchMs: this.currentFetchMs,
+      decodeInitMs: Math.max(0, performance.now() - loadStart),
+    };
+    if (this.app) {
+      this.app.renderNextFrame = true;
+    }
+    return loaded;
   }
 
   setVisible(id: string, visible: boolean): void {
-    const handle = this.handles.find((entry) => entry.id === id);
+    const handle = this.handleById.get(id);
     if (!handle) {
       return;
     }
@@ -199,64 +302,63 @@ export class GaussianSplatRenderer implements SplatRenderer {
       return;
     }
     handle.object3D.visible = visible;
+    if (visible) {
+      handle.component.show();
+    } else {
+      handle.component.hide();
+    }
     this.fitData = null;
-    this.viewer?.forceRenderNextFrame();
+    if (this.app) {
+      this.app.renderNextFrame = true;
+    }
   }
 
   getSplatSampleCloud(id: string, options: SplatSampleOptions): SplatSampleCloud {
-    if (!this.viewer || this.sceneGraphMutating) {
-      return { points: [] };
-    }
-    const sceneIndex = this.handles.findIndex((handle) => handle.id === id);
-    if (sceneIndex < 0) {
-      return { points: [] };
-    }
-    const scene = this.viewer.getSplatScene(sceneIndex);
-    const count = scene.splatBuffer.getSplatCount();
-    if (count <= 0) {
+    const handle = this.handleById.get(id);
+    if (!handle) {
       return { points: [] };
     }
 
+    const resource = handle.asset.resource as pc.GSplatResourceBase | null;
+    const centers = resource?.centers;
+    if (!centers || centers.length < 3) {
+      return { points: [] };
+    }
+
+    const count = Math.floor(centers.length / 3);
     const maxSamples = Math.max(1, Math.floor(options.maxSamples));
+    const step = Math.max(1, Math.floor(count / maxSamples));
+    const randomize = options.randomize ?? false;
     const includeColors = options.includeColors ?? false;
-    const step = options.randomize
-      ? Math.max(1, Math.floor(count / maxSamples))
-      : Math.max(1, Math.floor(count / maxSamples));
-    const useWorldSpace = options.space !== 'local';
-    const transform = useWorldSpace
-      ? new THREE.Matrix4().compose(scene.position, scene.quaternion, scene.scale)
-      : undefined;
-    const sample = new THREE.Vector3();
-    const sampleColor = new THREE.Vector4();
+
+    const transform = toThreeMatrix(handle.entity.getWorldTransform());
     const points: THREE.Vector3[] = [];
     const sampledColors: number[] = [];
-    const appendSample = (splatIndex: number): void => {
-      scene.splatBuffer.getSplatCenter(splatIndex, sample, transform);
-      points.push(sample.clone());
+    const startOffset = randomize && step > 1 ? Math.floor(Math.random() * step) : 0;
+
+    for (let sampleIndex = startOffset; sampleIndex < count && points.length < maxSamples; sampleIndex += step) {
+      const baseIndex = sampleIndex * 3;
+      const point = new THREE.Vector3(
+        centers[baseIndex],
+        centers[baseIndex + 1],
+        centers[baseIndex + 2],
+      );
+      if (options.space !== 'local') {
+        point.applyMatrix4(transform);
+      }
+      points.push(point);
       if (includeColors) {
-        scene.splatBuffer.getSplatColor(splatIndex, sampleColor);
-        sampledColors.push(
-          THREE.MathUtils.clamp(sampleColor.x / 255, 0, 1),
-          THREE.MathUtils.clamp(sampleColor.y / 255, 0, 1),
-          THREE.MathUtils.clamp(sampleColor.z / 255, 0, 1),
-        );
+        sampledColors.push(1, 1, 1);
       }
+    }
+
+    if (!includeColors) {
+      return { points };
+    }
+    return {
+      points,
+      colors: new Float32Array(sampledColors),
     };
-    if (options.randomize) {
-      const jitter = step > 1 ? Math.floor(Math.random() * step) : 0;
-      for (let splatIndex = jitter; splatIndex < count && points.length < maxSamples; splatIndex += step) {
-        appendSample(splatIndex);
-      }
-      return includeColors
-        ? { points, colors: new Float32Array(sampledColors) }
-        : { points };
-    }
-    for (let splatIndex = 0; splatIndex < count && points.length < maxSamples; splatIndex += step) {
-      appendSample(splatIndex);
-    }
-    return includeColors
-      ? { points, colors: new Float32Array(sampledColors) }
-      : { points };
   }
 
   getSplatSamplePoints(id: string, options: SplatSampleOptions): THREE.Vector3[] {
@@ -269,54 +371,25 @@ export class GaussianSplatRenderer implements SplatRenderer {
     return metrics;
   }
 
-  setInteriorView(config: InteriorViewConfig): void {
-    this.interiorConfig = {
-      enabled: config.enabled,
-      target: [...config.target],
-      radius: config.radius,
-      softness: config.softness,
-      fadeAlpha: config.fadeAlpha,
-      maxDistance: config.maxDistance,
-      affectSize: config.affectSize,
-    };
-    const binding = this.ensureInteriorPatch();
-    if (!binding) {
-      if (this.interiorConfig.enabled && !this.warnedInteriorFallback) {
-        console.warn('Interior view shader injection unavailable. Effect disabled.');
-        this.warnedInteriorFallback = true;
-      }
-      return;
-    }
-    this.applyInteriorConfig(binding, this.interiorConfig);
-    this.viewer?.forceRenderNextFrame();
+  setInteriorView(_config: InteriorViewConfig): void {
+    // Intentionally unsupported in this migration phase.
   }
 
-  setInteriorCameraPosition(position: THREE.Vector3): void {
-    const binding = this.ensureInteriorPatch();
-    if (!binding) {
-      return;
-    }
-    binding.uniforms.uInteriorCameraPos.value.copy(position);
+  setInteriorCameraPosition(_position: THREE.Vector3): void {
+    // Intentionally unsupported in this migration phase.
   }
 
   async clear(): Promise<void> {
-    if (!this.viewer) {
-      return;
+    const existing = [...this.handles];
+    for (const handle of existing) {
+      this.destroyHandle(handle);
     }
-    await this.withSceneMutation(async () => {
-      for (let sceneIndex = this.sceneIdOrder.length - 1; sceneIndex >= 0; sceneIndex -= 1) {
-        await this.viewer!.removeSplatScene(sceneIndex, false);
-      }
-      for (const handle of this.handles) {
-        handle.dispose();
-      }
-      this.sceneIdOrder.length = 0;
-      this.handles.length = 0;
-      this.fitData = null;
-      this.revealBinding = null;
-      this.interiorBinding = null;
-      this.viewer!.forceRenderNextFrame();
-    });
+    this.handles = [];
+    this.handleById.clear();
+    this.fitData = null;
+    if (this.app) {
+      this.app.renderNextFrame = true;
+    }
   }
 
   getFitData(): SplatFitData | null {
@@ -327,612 +400,359 @@ export class GaussianSplatRenderer implements SplatRenderer {
         radius: this.fitData.radius,
       };
     }
-    if (!this.viewer || this.handles.length === 0 || this.sceneGraphMutating) {
+    if (this.handles.length === 0) {
       return null;
     }
 
-    const box = new THREE.Box3();
-    const sample = new THREE.Vector3();
-    const transform = new THREE.Matrix4();
-    let sampledPoints = 0;
-
-    for (let sceneIndex = 0; sceneIndex < this.handles.length; sceneIndex += 1) {
-      const scene = this.viewer.getSplatScene(sceneIndex);
-      if (!scene.visible) {
+    const worldBounds = new THREE.Box3();
+    let hasAny = false;
+    for (const handle of this.handles) {
+      if (!handle.object3D.visible) {
         continue;
       }
-      transform.compose(scene.position, scene.quaternion, scene.scale);
-      const count = scene.splatBuffer.getSplatCount();
-      const maxSamplesPerScene = 15000;
-      const step = Math.max(1, Math.floor(count / maxSamplesPerScene));
-      for (let splatIndex = 0; splatIndex < count; splatIndex += step) {
-        scene.splatBuffer.getSplatCenter(splatIndex, sample, transform);
-        box.expandByPoint(sample);
-        sampledPoints += 1;
+      if (!handle.sampledBounds) {
+        continue;
       }
+      worldBounds.expandByPoint(handle.sampledBounds.min);
+      worldBounds.expandByPoint(handle.sampledBounds.max);
+      hasAny = true;
     }
 
-    if (sampledPoints === 0 || box.isEmpty()) {
+    if (!hasAny || worldBounds.isEmpty()) {
       return null;
     }
 
-    const center = box.getCenter(new THREE.Vector3());
-    const size = box.getSize(new THREE.Vector3());
-    const radius = Math.max(0.6, center.distanceTo(box.max) * 1.1);
-    this.fitData = { center: center.clone(), size: size.clone(), radius };
-    return { center, size, radius };
+    const center = worldBounds.getCenter(new THREE.Vector3());
+    const size = worldBounds.getSize(new THREE.Vector3());
+    const radius = Math.max(0.6, center.distanceTo(worldBounds.max) * 1.1);
+    this.fitData = {
+      center: center.clone(),
+      size: size.clone(),
+      radius,
+    };
+    return {
+      center,
+      size,
+      radius,
+    };
   }
 
   update(): void {
-    if (this.sceneGraphMutating) {
-      return;
+    this.syncViewportAndCamera();
+    if (this.app) {
+      this.app.renderNextFrame = true;
     }
-    this.viewer?.update();
   }
 
   render(): void {
-    if (this.sceneGraphMutating) {
-      return;
+    if (this.app) {
+      this.app.renderNextFrame = true;
     }
-    this.viewer?.render();
   }
 
   async dispose(): Promise<void> {
-    for (const handle of this.handles) {
-      handle.dispose();
-    }
-    this.handles.length = 0;
-    if (!this.viewer) {
-      this.releaseTransientBlobUrls();
-      return;
-    }
-    await this.withSceneMutation(async () => {
-      await this.viewer!.dispose();
-    });
-    this.viewer = null;
-    this.sceneIdOrder = [];
+    await this.clear();
     this.fitData = null;
-    this.revealBinding = null;
-    this.interiorBinding = null;
-    this.releaseTransientBlobUrls();
+
+    if (this.app) {
+      this.app.destroy();
+      this.app = null;
+    }
+    this.cameraEntity = null;
+    this.sceneRoot = null;
+
+    if (this.canvas && this.canvas.parentElement) {
+      this.canvas.parentElement.removeChild(this.canvas);
+    }
+    this.canvas = null;
+    this.context = null;
   }
 
-  private async withSceneMutation<T>(work: () => Promise<T>): Promise<T> {
-    const run = this.sceneMutationQueue.then(async () => {
-      this.sceneGraphMutating = true;
-      try {
-        return await work();
-      } finally {
-        this.sceneGraphMutating = false;
-      }
-    });
-    this.sceneMutationQueue = run.then(
-      () => undefined,
-      () => undefined,
-    );
-    return run;
-  }
-
-  private async loadAssetsWithViewer(assets: SplatAssetConfig[]): Promise<void> {
-    if (!this.viewer) {
+  private async loadSingleAsset(assetConfig: SplatAssetConfig): Promise<InternalSplatHandle> {
+    if (!this.app || !this.sceneRoot) {
       throw new Error('Renderer not initialized.');
     }
-    this.currentFetchMs = 0;
+
     const loadStart = performance.now();
-    if (assets.length === 1) {
-      const asset = assets[0];
-      const source = await this.resolveAssetSource(asset);
-      const progressiveLoad = source.extension === '.ksplat';
-      try {
-        await this.viewer.addSplatScene(source.path, {
-          format: source.format,
-          showLoadingUI: false,
-          progressiveLoad,
-          position: asset.transform.position,
-          rotation: toQuaternionArray(asset.transform.rotation),
-          scale: asset.transform.scale,
-          opacity: 0,
-          visible: asset.visibleDefault,
-          splatAlphaRemovalThreshold: 1,
-        });
-      } catch (error) {
-        throw new Error(this.buildAssetLoadErrorMessage([asset], error));
-      }
-      this.lastLoadMetrics = {
-        assetFetchMs: this.currentFetchMs,
-        decodeInitMs: Math.max(0, performance.now() - loadStart),
-      };
-      return;
+    const playCanvasAsset = new pc.Asset(assetConfig.id, 'gsplat', {
+      url: assetConfig.src,
+    });
+    await this.loadAssetResource(playCanvasAsset);
+    this.currentFetchMs += Math.max(0, performance.now() - loadStart);
+
+    const entity = new pc.Entity(`splat-${assetConfig.id}`);
+    entity.setLocalPosition(...assetConfig.transform.position);
+    entity.setLocalEulerAngles(...assetConfig.transform.rotation);
+    entity.setLocalScale(...assetConfig.transform.scale);
+
+    entity.addComponent('gsplat', {
+      asset: playCanvasAsset.id,
+      unified: this.runtimeConfig.unified,
+      layers: [pc.LAYERID_WORLD],
+    });
+
+    const component = entity.gsplat as pc.GSplatComponent | undefined;
+    if (!component) {
+      throw new Error(`Failed to create gsplat component for asset "${assetConfig.id}".`);
     }
 
-    try {
-      const resolved = await Promise.all(
-        assets.map(async (asset) => ({
-          asset,
-          source: await this.resolveAssetSource(asset),
-        })),
-      );
-      await this.viewer.addSplatScenes(
-        resolved.map(({ asset, source }) => ({
-          path: source.path,
-          format: source.format,
-          position: asset.transform.position,
-          rotation: toQuaternionArray(asset.transform.rotation),
-          scale: asset.transform.scale,
-          opacity: 0,
-          visible: asset.visibleDefault,
-          splatAlphaRemovalThreshold: 1,
-          showLoadingUI: false,
-        })),
-        false,
-      );
-    } catch (error) {
-      throw new Error(this.buildAssetLoadErrorMessage(assets, error));
-    }
-    this.lastLoadMetrics = {
-      assetFetchMs: this.currentFetchMs,
-      decodeInitMs: Math.max(0, performance.now() - loadStart),
-    };
-  }
+    this.applyRuntimeConfigToComponent(component);
+    component.setWorkBufferModifier({ glsl: REVEAL_WORKBUFFER_MODIFIER_GLSL });
+    component.workBufferUpdate = pc.WORKBUFFER_UPDATE_ONCE;
 
-  private async resolveAssetSource(asset: SplatAssetConfig): Promise<ResolvedAssetSource> {
-    const extension = getAssetExtension(asset.src);
-    if (extension === '.sog') {
-      const blobUrl = await this.getSogBlobUrl(asset.src);
-      return {
-        path: blobUrl,
-        format: GaussianSplats3D.SceneFormat.Ply,
-        extension: '.ply',
-      };
-    }
-    const format = this.resolveSceneFormat(extension);
+    this.sceneRoot.addChild(entity);
 
-    if (extension !== '.splat') {
-      return { path: asset.src, format, extension };
+    const proxyObject = new THREE.Object3D();
+    proxyObject.visible = assetConfig.visibleDefault;
+    proxyObject.scale.set(...assetConfig.transform.scale);
+
+    if (assetConfig.visibleDefault) {
+      component.show();
+    } else {
+      component.hide();
     }
 
-    const blobUrl = await this.getSplatBlobUrl(asset.src);
-    return {
-      path: blobUrl,
-      format,
-      extension,
-    };
-  }
-
-  private resolveSceneFormat(extension: string | null): number | undefined {
-    switch (extension) {
-      case '.splat':
-        return GaussianSplats3D.SceneFormat.Splat;
-      case '.ksplat':
-        return GaussianSplats3D.SceneFormat.KSplat;
-      case '.ply':
-        return GaussianSplats3D.SceneFormat.Ply;
-      case '.spz':
-        return GaussianSplats3D.SceneFormat.Spz;
-      default:
-        return undefined;
-    }
-  }
-
-  private async getSplatBlobUrl(sourceUrl: string): Promise<string> {
-    const cached = this.splatBlobUrlCache.get(sourceUrl);
-    if (cached) {
-      return cached;
-    }
-
-    const fetchPromise = (async () => {
-      const start = performance.now();
-      const response = await fetch(sourceUrl);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch splat source "${sourceUrl}" (${response.status} ${response.statusText}).`);
-      }
-      const fileData = await response.arrayBuffer();
-      this.currentFetchMs += Math.max(0, performance.now() - start);
-      const blobUrl = URL.createObjectURL(new Blob([fileData], { type: 'application/octet-stream' }));
-      this.transientBlobUrls.add(blobUrl);
-      return blobUrl;
-    })();
-
-    this.splatBlobUrlCache.set(sourceUrl, fetchPromise);
-    try {
-      return await fetchPromise;
-    } catch (error) {
-      this.splatBlobUrlCache.delete(sourceUrl);
-      throw error;
-    }
-  }
-
-  private async getSogBlobUrl(sourceUrl: string): Promise<string> {
-    const cached = this.sogBlobUrlCache.get(sourceUrl);
-    if (cached) {
-      return cached;
-    }
-
-    const convertPromise = (async () => {
-      const fetchStart = performance.now();
-      const [response, sogTransform] = await Promise.all([
-        fetch(sourceUrl, { cache: 'force-cache' }),
-        this.getSogTransformModule(),
-      ]);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch SOG source "${sourceUrl}" (${response.status} ${response.statusText}).`);
-      }
-      const sogData = new Uint8Array(await response.arrayBuffer());
-      this.currentFetchMs += Math.max(0, performance.now() - fetchStart);
-
-      const readFs = new sogTransform.MemoryReadFileSystem();
-      const inputName = 'scene.sog';
-      readFs.set(inputName, sogData);
-      const dataTables = await sogTransform.readFile({
-        filename: inputName,
-        inputFormat: sogTransform.getInputFormat(inputName),
-        options: SOG_DECODE_OPTIONS,
-        params: [],
-        fileSystem: readFs,
-      });
-      if (!Array.isArray(dataTables) || dataTables.length === 0) {
-        throw new Error(`Failed to decode SOG source "${sourceUrl}".`);
-      }
-
-      const combinedTable =
-        dataTables.length === 1 ? dataTables[0] : sogTransform.combine(dataTables);
-      const writeFs = new sogTransform.MemoryFileSystem();
-      const outputName = 'scene.ply';
-      await sogTransform.writeFile(
-        {
-          filename: outputName,
-          outputFormat: sogTransform.getOutputFormat(outputName, SOG_DECODE_OPTIONS),
-          dataTable: combinedTable,
-          options: SOG_DECODE_OPTIONS,
-        },
-        writeFs,
-      );
-      const plyData = writeFs.results.get(outputName);
-      if (!plyData) {
-        throw new Error(`Failed to convert SOG source "${sourceUrl}" to PLY.`);
-      }
-      const blobUrl = URL.createObjectURL(new Blob([plyData], { type: 'application/octet-stream' }));
-      this.transientBlobUrls.add(blobUrl);
-      return blobUrl;
-    })();
-
-    this.sogBlobUrlCache.set(sourceUrl, convertPromise);
-    try {
-      return await convertPromise;
-    } catch (error) {
-      this.sogBlobUrlCache.delete(sourceUrl);
-      throw error;
-    }
-  }
-
-  private getSogTransformModule(): Promise<SogTransformModule> {
-    if (this.sogTransformModulePromise) {
-      return this.sogTransformModulePromise;
-    }
-    this.sogTransformModulePromise = (async () => {
-      const [module, wasmUrlModule] = await Promise.all([
-        import('@playcanvas/splat-transform'),
-        import('@playcanvas/splat-transform/lib/webp.wasm?url'),
-      ]);
-      const typedModule = module as SogTransformModule;
-      const wasmUrl = (wasmUrlModule as { default?: string }).default ?? null;
-      if (typedModule.WebPCodec && wasmUrl) {
-        typedModule.WebPCodec.wasmUrl = wasmUrl;
-      }
-      return typedModule;
-    })();
-    return this.sogTransformModulePromise;
-  }
-
-  private releaseTransientBlobUrls(): void {
-    for (const blobUrl of this.transientBlobUrls) {
-      URL.revokeObjectURL(blobUrl);
-    }
-    this.transientBlobUrls.clear();
-    this.splatBlobUrlCache.clear();
-    this.sogBlobUrlCache.clear();
-  }
-
-  private createSplatHandle(asset: SplatAssetConfig, object3D: THREE.Object3D, sceneIndex: number): SplatHandle {
-    const scene = this.viewer?.getSplatScene(sceneIndex);
-    const sampledBounds = scene ? this.computeBoundsFromScene(scene) : null;
-    const bounds = sampledBounds
+    const sampledBounds = this.computeSampledBounds(entity, playCanvasAsset);
+    const boundsY: SplatRevealBounds = sampledBounds
       ? { minY: sampledBounds.min.y, maxY: sampledBounds.max.y }
-      : this.computeBoundsFromObject(object3D);
-    const revealBinding = this.ensureRevealPatch();
+      : { minY: -1, maxY: 1 };
 
-    const handle: SplatHandle = {
-      id: asset.id,
-      object3D,
-      boundsY: { ...bounds },
-      sampledBounds: sampledBounds
-        ? {
-            min: sampledBounds.min.clone(),
-            max: sampledBounds.max.clone(),
-          }
-        : undefined,
+    const sphereOrigin = sampledBounds
+      ? sampledBounds.min.clone().add(sampledBounds.max).multiplyScalar(0.5)
+      : new THREE.Vector3(0, 0, 0);
+
+    const revealParams: SplatRevealParams = {
+      enabled: DEFAULT_REVEAL_PARAMS.enabled,
+      mode: DEFAULT_REVEAL_PARAMS.mode,
+      revealY: boundsY.maxY,
+      band: DEFAULT_REVEAL_PARAMS.band,
+      sphereOrigin,
+      sphereRadius: DEFAULT_REVEAL_PARAMS.sphereRadius,
+      sphereFeather: DEFAULT_REVEAL_PARAMS.sphereFeather,
+      clipBottomEnabled: DEFAULT_REVEAL_PARAMS.clipBottomEnabled,
+      clipBottomY: boundsY.minY,
+      affectAlpha: DEFAULT_REVEAL_PARAMS.affectAlpha,
+      affectSize: true,
+    };
+
+    const baseScale = proxyObject.scale.clone();
+
+    const handle = {
+      id: assetConfig.id,
+      entity,
+      component,
+      asset: playCanvasAsset,
+      object3D: proxyObject,
+      baseScale,
+      boundsY,
+      sampledBounds,
+      revealParams,
+      setRevealParams: (params: SplatRevealParams): void => {
+        handle.revealParams = cloneRevealParams(params);
+        this.applyRevealParams(handle);
+      },
       setRevealBounds: (nextBounds: SplatRevealBounds): void => {
         handle.boundsY = { ...nextBounds };
-        if (revealBinding) {
-          revealBinding.uniforms.uRevealMinY.value[sceneIndex] = nextBounds.minY;
-          revealBinding.uniforms.uRevealMaxY.value[sceneIndex] = nextBounds.maxY;
-        }
-      },
-      setRevealParams: (params: SplatRevealParams): void => {
-        if (revealBinding) {
-          revealBinding.uniforms.uRevealEnabled.value[sceneIndex] = params.enabled ? 1 : 0;
-          revealBinding.uniforms.uRevealMode.value[sceneIndex] = params.mode === 'bottomSphere' ? 1 : 0;
-          revealBinding.uniforms.uRevealY.value[sceneIndex] = params.revealY;
-          revealBinding.uniforms.uRevealBand.value[sceneIndex] = Math.max(0.0001, params.band);
-          revealBinding.uniforms.uSphereEnabled.value[sceneIndex] =
-            params.enabled && params.mode === 'bottomSphere' ? 1 : 0;
-          revealBinding.uniforms.uSphereOriginX.value[sceneIndex] = params.sphereOrigin.x;
-          revealBinding.uniforms.uSphereOriginY.value[sceneIndex] = params.sphereOrigin.y;
-          revealBinding.uniforms.uSphereOriginZ.value[sceneIndex] = params.sphereOrigin.z;
-          revealBinding.uniforms.uSphereRadius.value[sceneIndex] = Math.max(0.0001, params.sphereRadius);
-          revealBinding.uniforms.uSphereFeather.value[sceneIndex] = Math.max(0.0001, params.sphereFeather);
-          revealBinding.uniforms.uClipBottomEnabled.value[sceneIndex] = params.clipBottomEnabled ? 1 : 0;
-          revealBinding.uniforms.uClipBottomY.value[sceneIndex] = params.clipBottomY;
-          revealBinding.uniforms.uRevealAffectAlpha.value[sceneIndex] = params.affectAlpha ? 1 : 0;
-          revealBinding.uniforms.uRevealAffectSize.value[sceneIndex] = params.affectSize ? 1 : 0;
-        } else if (!this.warnedRevealFallback) {
-          console.warn('Shader reveal unavailable. Using scene opacity dissolve fallback.');
-          this.warnedRevealFallback = true;
-          this.applySceneOpacityReveal(object3D, params, handle.boundsY);
-        } else {
-          this.applySceneOpacityReveal(object3D, params, handle.boundsY);
-        }
-        this.viewer?.forceRenderNextFrame();
+        this.applyRevealParams(handle);
       },
       dispose: (): void => {
-        if (revealBinding) {
-          revealBinding.uniforms.uRevealEnabled.value[sceneIndex] = 0;
-          revealBinding.uniforms.uSphereEnabled.value[sceneIndex] = 0;
-          revealBinding.uniforms.uClipBottomEnabled.value[sceneIndex] = 0;
-        }
+        this.destroyHandle(handle);
       },
-    };
+    } satisfies InternalSplatHandle;
 
-    handle.setRevealBounds(bounds);
+    this.applyRevealParams(handle);
     return handle;
   }
 
-  private computeBoundsFromObject(root: THREE.Object3D): SplatRevealBounds {
-    const box = new THREE.Box3().setFromObject(root);
-    if (box.isEmpty()) {
-      return { minY: -1, maxY: 1 };
-    }
-    return { minY: box.min.y, maxY: box.max.y };
-  }
+  private applyRevealParams(handle: InternalSplatHandle): void {
+    const params = handle.revealParams;
+    const scaleMulX = handle.object3D.scale.x / Math.max(EPSILON, handle.baseScale.x);
+    const scaleMulY = handle.object3D.scale.y / Math.max(EPSILON, handle.baseScale.y);
+    const scaleMulZ = handle.object3D.scale.z / Math.max(EPSILON, handle.baseScale.z);
 
-  private computeBoundsFromScene(scene: {
-    splatBuffer: { getSplatCount(): number; getSplatCenter(index: number, out: THREE.Vector3, transform?: THREE.Matrix4): void };
-    position: THREE.Vector3;
-    quaternion: THREE.Quaternion;
-    scale: THREE.Vector3;
-  }): THREE.Box3 | null {
-    const count = scene.splatBuffer.getSplatCount();
-    if (count <= 0) {
-      return null;
-    }
-    const box = new THREE.Box3();
-    const sample = new THREE.Vector3();
-    const transform = new THREE.Matrix4().compose(scene.position, scene.quaternion, scene.scale);
-    const maxSamples = 180000;
-    const step = Math.max(1, Math.floor(count / maxSamples));
-    let sampled = 0;
-    for (let splatIndex = 0; splatIndex < count; splatIndex += step) {
-      scene.splatBuffer.getSplatCenter(splatIndex, sample, transform);
-      box.expandByPoint(sample);
-      sampled += 1;
-    }
-    if (sampled === 0 || box.isEmpty()) {
-      return null;
-    }
-    return box;
-  }
+    handle.component.setParameter('uRevealEnabled', params.enabled ? 1 : 0);
+    handle.component.setParameter('uRevealMode', params.mode === 'bottomSphere' ? 1 : 0);
+    handle.component.setParameter('uRevealY', params.revealY);
+    handle.component.setParameter('uRevealBand', Math.max(EPSILON, params.band));
+    handle.component.setParameter('uSphereOrigin', [
+      params.sphereOrigin.x,
+      params.sphereOrigin.y,
+      params.sphereOrigin.z,
+    ]);
+    handle.component.setParameter('uSphereRadius', Math.max(EPSILON, params.sphereRadius));
+    handle.component.setParameter('uSphereFeather', Math.max(EPSILON, params.sphereFeather));
+    handle.component.setParameter('uClipBottomEnabled', params.clipBottomEnabled ? 1 : 0);
+    handle.component.setParameter('uClipBottomY', params.clipBottomY);
+    handle.component.setParameter('uRevealAffectAlpha', params.affectAlpha ? 1 : 0);
+    handle.component.setParameter('uScaleMul', [scaleMulX, scaleMulY, scaleMulZ]);
 
-  private ensureRevealPatch(): RevealMaterialBinding | null {
-    if (!ENABLE_SHADER_REVEAL) {
-      return null;
-    }
-    if (this.revealBinding) {
-      return this.revealBinding;
-    }
-    const anyViewer = this.viewer as unknown as InternalViewer | null;
-    const material = anyViewer?.splatMesh?.material;
-    if (!material) {
-      return null;
-    }
-    this.revealBinding = this.patchRevealMaterial(material);
-    return this.revealBinding;
-  }
+    handle.component.workBufferUpdate = params.enabled
+      ? pc.WORKBUFFER_UPDATE_ALWAYS
+      : pc.WORKBUFFER_UPDATE_ONCE;
 
-  private ensureInteriorPatch(): InteriorMaterialBinding | null {
-    if (this.interiorBinding) {
-      return this.interiorBinding;
-    }
-    const anyViewer = this.viewer as unknown as InternalViewer | null;
-    const material = anyViewer?.splatMesh?.material;
-    if (!material) {
-      return null;
-    }
-    if (!('uniforms' in material) || typeof material.uniforms !== 'object' || material.uniforms === null) {
-      return null;
-    }
-    this.interiorBinding = this.patchInteriorMaterial(material);
-    this.applyInteriorConfig(this.interiorBinding, this.interiorConfig);
-    return this.interiorBinding;
-  }
-
-  private patchRevealMaterial(material: THREE.ShaderMaterial): RevealMaterialBinding {
-    const tagged = material as unknown as Record<string, unknown>;
-    if (tagged[REVEAL_PATCH_FLAG] === true) {
-      const existing = tagged.__splatRevealBinding as RevealMaterialBinding | undefined;
-      if (existing) {
-        return existing;
-      }
-    }
-
-    const uniforms = {
-      uRevealEnabled: { value: makeRevealUniformArrays(0) },
-      uRevealY: { value: makeRevealUniformArrays(0) },
-      uRevealBand: { value: makeRevealUniformArrays(0.12) },
-      uRevealMinY: { value: makeRevealUniformArrays(-1) },
-      uRevealMaxY: { value: makeRevealUniformArrays(1) },
-      uRevealMode: { value: makeRevealUniformArrays(0) },
-      uSphereEnabled: { value: makeRevealUniformArrays(0) },
-      uSphereOriginX: { value: makeRevealUniformArrays(0) },
-      uSphereOriginY: { value: makeRevealUniformArrays(0) },
-      uSphereOriginZ: { value: makeRevealUniformArrays(0) },
-      uSphereRadius: { value: makeRevealUniformArrays(0.0001) },
-      uSphereFeather: { value: makeRevealUniformArrays(0.12) },
-      uClipBottomEnabled: { value: makeRevealUniformArrays(0) },
-      uClipBottomY: { value: makeRevealUniformArrays(0) },
-      uRevealAffectAlpha: { value: makeRevealUniformArrays(1) },
-      uRevealAffectSize: { value: makeRevealUniformArrays(1) },
-    };
-
-    material.uniforms.uRevealEnabled = uniforms.uRevealEnabled;
-    material.uniforms.uRevealY = uniforms.uRevealY;
-    material.uniforms.uRevealBand = uniforms.uRevealBand;
-    material.uniforms.uRevealMinY = uniforms.uRevealMinY;
-    material.uniforms.uRevealMaxY = uniforms.uRevealMaxY;
-    material.uniforms.uRevealMode = uniforms.uRevealMode;
-    material.uniforms.uSphereEnabled = uniforms.uSphereEnabled;
-    material.uniforms.uSphereOriginX = uniforms.uSphereOriginX;
-    material.uniforms.uSphereOriginY = uniforms.uSphereOriginY;
-    material.uniforms.uSphereOriginZ = uniforms.uSphereOriginZ;
-    material.uniforms.uSphereRadius = uniforms.uSphereRadius;
-    material.uniforms.uSphereFeather = uniforms.uSphereFeather;
-    material.uniforms.uClipBottomEnabled = uniforms.uClipBottomEnabled;
-    material.uniforms.uClipBottomY = uniforms.uClipBottomY;
-    material.uniforms.uRevealAffectAlpha = uniforms.uRevealAffectAlpha;
-    material.uniforms.uRevealAffectSize = uniforms.uRevealAffectSize;
-
-    material.vertexShader = injectRevealIntoVertexShader(material.vertexShader).shader;
-    material.fragmentShader = injectRevealIntoFragmentShader(material.fragmentShader).shader;
-    material.needsUpdate = true;
-
-    const binding: RevealMaterialBinding = { material, uniforms };
-    tagged[REVEAL_PATCH_FLAG] = true;
-    tagged.__splatRevealBinding = binding;
-    return binding;
-  }
-
-  private patchInteriorMaterial(material: THREE.ShaderMaterial): InteriorMaterialBinding {
-    if (!material.uniforms) {
-      material.uniforms = {};
-    }
-    const tagged = material as unknown as Record<string, unknown>;
-    if (tagged[INTERIOR_PATCH_FLAG] === true) {
-      const existing = tagged.__splatInteriorBinding as InteriorMaterialBinding | undefined;
-      if (existing) {
-        return existing;
-      }
-    }
-
-    const uniforms = {
-      uInteriorEnabled: { value: 0 },
-      uInteriorTarget: { value: new THREE.Vector3(0, 0, 0) },
-      uInteriorRadius: { value: 0.45 },
-      uInteriorSoftness: { value: 0.2 },
-      uInteriorFadeAlpha: { value: 0.15 },
-      uInteriorMaxDist: { value: 20 },
-      uInteriorAffectSize: { value: 0 },
-      uInteriorCameraPos: { value: new THREE.Vector3(0, 0, 0) },
-    };
-
-    material.uniforms.uInteriorEnabled = uniforms.uInteriorEnabled;
-    material.uniforms.uInteriorTarget = uniforms.uInteriorTarget;
-    material.uniforms.uInteriorRadius = uniforms.uInteriorRadius;
-    material.uniforms.uInteriorSoftness = uniforms.uInteriorSoftness;
-    material.uniforms.uInteriorFadeAlpha = uniforms.uInteriorFadeAlpha;
-    material.uniforms.uInteriorMaxDist = uniforms.uInteriorMaxDist;
-    material.uniforms.uInteriorAffectSize = uniforms.uInteriorAffectSize;
-    material.uniforms.uInteriorCameraPos = uniforms.uInteriorCameraPos;
-
-    material.vertexShader = injectInteriorIntoVertexShader(material.vertexShader).shader;
-    material.fragmentShader = injectInteriorIntoFragmentShader(material.fragmentShader).shader;
-    material.needsUpdate = true;
-
-    const binding: InteriorMaterialBinding = { material, uniforms };
-    tagged[INTERIOR_PATCH_FLAG] = true;
-    tagged.__splatInteriorBinding = binding;
-    return binding;
-  }
-
-  private applyInteriorConfig(binding: InteriorMaterialBinding, config: InteriorViewConfig): void {
-    binding.uniforms.uInteriorEnabled.value = config.enabled ? 1 : 0;
-    binding.uniforms.uInteriorTarget.value.set(...config.target);
-    binding.uniforms.uInteriorRadius.value = Math.max(0.0001, config.radius);
-    binding.uniforms.uInteriorSoftness.value = Math.min(0.6, Math.max(0.05, config.softness));
-    binding.uniforms.uInteriorFadeAlpha.value = Math.min(1, Math.max(0, config.fadeAlpha));
-    binding.uniforms.uInteriorMaxDist.value = Math.max(0.0001, config.maxDistance);
-    binding.uniforms.uInteriorAffectSize.value = config.affectSize ? 1 : 0;
-  }
-
-  private applySceneOpacityReveal(
-    root: THREE.Object3D,
-    params: SplatRevealParams,
-    bounds: SplatRevealBounds,
-  ): void {
-    let revealProgress = 1;
-    if (params.mode === 'bottomSphere') {
-      const box = new THREE.Box3().setFromObject(root);
-      if (!box.isEmpty()) {
-        const maxRadius = Math.max(
-          params.sphereOrigin.distanceTo(box.max),
-          params.sphereOrigin.distanceTo(box.min),
-        );
-        revealProgress = Math.min(1, Math.max(0, params.sphereRadius / Math.max(0.0001, maxRadius)));
-      }
+    if (handle.object3D.visible) {
+      handle.component.show();
     } else {
-      const range = Math.max(0.0001, bounds.maxY - bounds.minY);
-      revealProgress = Math.min(1, Math.max(0, (params.revealY - bounds.minY) / range));
+      handle.component.hide();
     }
-    const sceneRoot = root as RevealSceneObject;
-    if (typeof sceneRoot.opacity === 'number') {
-      sceneRoot.opacity = params.enabled && params.affectAlpha ? revealProgress : 1;
+
+    if (this.app) {
+      this.app.renderNextFrame = true;
+    }
+  }
+
+  private applyRuntimeConfigToScene(): void {
+    if (!this.app) {
+      return;
+    }
+    const gsplat = this.app.scene.gsplat;
+    gsplat.splatBudget = this.runtimeConfig.splatBudget;
+    gsplat.lodRangeMin = this.runtimeConfig.lodRangeMin;
+    gsplat.lodRangeMax = this.runtimeConfig.lodRangeMax;
+    gsplat.lodUpdateDistance = this.runtimeConfig.lodUpdateDistance;
+    gsplat.lodUpdateAngle = this.runtimeConfig.lodUpdateAngle;
+    gsplat.lodUnderfillLimit = this.runtimeConfig.lodUnderfillLimit;
+    gsplat.colorUpdateDistance = this.runtimeConfig.colorUpdateDistance;
+    gsplat.colorUpdateAngle = this.runtimeConfig.colorUpdateAngle;
+    gsplat.cooldownTicks = this.runtimeConfig.cooldownTicks;
+  }
+
+  private applyRuntimeConfigToComponent(component: pc.GSplatComponent): void {
+    component.unified = this.runtimeConfig.unified;
+    component.highQualitySH = this.runtimeConfig.highQualitySH;
+    component.lodBaseDistance = this.runtimeConfig.lodBaseDistance;
+    component.lodMultiplier = this.runtimeConfig.lodMultiplier;
+  }
+
+  private syncViewportAndCamera(): void {
+    if (!this.context || !this.app || !this.cameraEntity) {
+      return;
+    }
+    const width = Math.max(1, this.context.rootElement.clientWidth);
+    const height = Math.max(1, this.context.rootElement.clientHeight);
+    this.app.resizeCanvas(width, height);
+
+    const sourceCamera = this.context.camera;
+    this.cameraEntity.setPosition(sourceCamera.position.x, sourceCamera.position.y, sourceCamera.position.z);
+    this.cameraEntity.setRotation(
+      sourceCamera.quaternion.x,
+      sourceCamera.quaternion.y,
+      sourceCamera.quaternion.z,
+      sourceCamera.quaternion.w,
+    );
+
+    const cameraComponent = this.cameraEntity.camera;
+    if (cameraComponent) {
+      cameraComponent.fov = sourceCamera.fov;
+      cameraComponent.nearClip = sourceCamera.near;
+      cameraComponent.farClip = sourceCamera.far;
+    }
+  }
+
+  private computeSampledBounds(
+    entity: pc.Entity,
+    asset: pc.Asset,
+  ): { min: THREE.Vector3; max: THREE.Vector3 } | undefined {
+    const resource = asset.resource as pc.GSplatResourceBase | null;
+    if (!resource) {
+      return undefined;
+    }
+
+    const transform = toThreeMatrix(entity.getWorldTransform());
+    if (resource.aabb) {
+      const corners = computeAabbCorners(resource.aabb);
+      const worldBounds = new THREE.Box3();
+      for (const corner of corners) {
+        worldBounds.expandByPoint(corner.applyMatrix4(transform));
+      }
+      if (!worldBounds.isEmpty()) {
+        return {
+          min: worldBounds.min.clone(),
+          max: worldBounds.max.clone(),
+        };
+      }
+    }
+
+    const centers = resource.centers;
+    if (!centers || centers.length < 3) {
+      return undefined;
+    }
+
+    const worldBounds = new THREE.Box3();
+    const count = Math.floor(centers.length / 3);
+    const maxSamples = 40000;
+    const step = Math.max(1, Math.floor(count / maxSamples));
+    for (let index = 0; index < count; index += step) {
+      const i3 = index * 3;
+      const worldPoint = new THREE.Vector3(centers[i3], centers[i3 + 1], centers[i3 + 2]).applyMatrix4(transform);
+      worldBounds.expandByPoint(worldPoint);
+    }
+
+    if (worldBounds.isEmpty()) {
+      return undefined;
+    }
+    return {
+      min: worldBounds.min.clone(),
+      max: worldBounds.max.clone(),
+    };
+  }
+
+  private async loadAssetResource(asset: pc.Asset): Promise<void> {
+    if (!this.app) {
+      throw new Error('Renderer not initialized.');
+    }
+    const app = this.app;
+
+    await new Promise<void>((resolve, reject) => {
+      const onError = (error: string, failedAsset: pc.Asset): void => {
+        if (failedAsset !== asset) {
+          return;
+        }
+        cleanup();
+        reject(new Error(`Failed to load "${asset.getFileUrl() || asset.name}": ${error}`));
+      };
+
+      const onReady = (): void => {
+        cleanup();
+        resolve();
+      };
+
+      const cleanup = (): void => {
+        app.assets.off('error', onError);
+      };
+
+      asset.ready(onReady);
+      app.assets.on('error', onError);
+      app.assets.add(asset);
+      app.assets.load(asset);
+    });
+  }
+
+  private destroyHandle(handle: InternalSplatHandle): void {
+    if (this.handleById.get(handle.id) !== handle) {
       return;
     }
 
-    root.traverse((node) => {
-      const withMaterial = node as THREE.Object3D & { material?: THREE.Material | THREE.Material[] };
-      if (!withMaterial.material) {
-        return;
-      }
-      const materials = Array.isArray(withMaterial.material)
-        ? withMaterial.material
-        : [withMaterial.material];
-      for (const material of materials) {
-        const mat = material as THREE.Material & { opacity?: number; transparent?: boolean };
-        if (typeof mat.opacity === 'number') {
-          mat.transparent = true;
-          mat.opacity = params.enabled && params.affectAlpha ? revealProgress : 1;
-          mat.needsUpdate = true;
-        }
-      }
-    });
-  }
+    try {
+      handle.component.setWorkBufferModifier(null);
+      handle.component.workBufferUpdate = pc.WORKBUFFER_UPDATE_ONCE;
+    } catch {
+      // no-op
+    }
 
-  private createViewer(context: RendererContext): GaussianSplats3D.Viewer {
-    return new GaussianSplats3D.Viewer({
-      selfDrivenMode: false,
-      useBuiltInControls: false,
-      dynamicScene: true,
-      renderer: context.renderer,
-      camera: context.camera,
-      threeScene: context.scene,
-      rootElement: context.rootElement,
-      renderMode: GaussianSplats3D.RenderMode.Always,
-      sceneRevealMode: GaussianSplats3D.SceneRevealMode.Instant,
-      enableOptionalEffects: false,
-      sharedMemoryForWorkers: false,
-      gpuAcceleratedSort: false,
-      optimizeSplatData: false,
-      logLevel: GaussianSplats3D.LogLevel.None,
-    });
+    if (handle.entity.parent) {
+      handle.entity.parent.removeChild(handle.entity);
+    }
+    handle.entity.destroy();
+
+    if (this.app) {
+      this.app.assets.remove(handle.asset);
+    }
+    handle.asset.unload();
+
+    this.handleById.delete(handle.id);
+    this.handles = this.handles.filter((entry) => entry !== handle);
+    this.fitData = null;
   }
 
   private ensureSupportedAssetFormats(assets: SplatAssetConfig[]): void {
@@ -950,205 +770,4 @@ export class GaussianSplatRenderer implements SplatRenderer {
       }
     }
   }
-
-  private buildAssetLoadErrorMessage(assets: SplatAssetConfig[], error: unknown): string {
-    const message = error instanceof Error ? error.message : 'Unknown renderer load error.';
-    if (assets.length === 1) {
-      return `Failed to load splat asset "${assets[0].src}". ${message}`;
-    }
-    const assetList = assets.map((asset) => asset.src).join(', ');
-    return `Failed to load one or more splat assets [${assetList}]. ${message}`;
-  }
-}
-
-function injectRevealIntoVertexShader(source: string): { shader: string } {
-  let shader = source;
-  if (!shader.includes('varying float vRevealWorldY;')) {
-    shader = `varying float vRevealWorldY;\nvarying vec3 vRevealWorldPos;\nvarying float vRevealSceneIndex;\n${shader}`;
-  }
-
-  if (shader.includes('uint sceneIndex = uint(0);')) {
-    shader = shader.replace(
-      'uint sceneIndex = uint(0);',
-      'uint sceneIndex = uint(0);\n            vRevealSceneIndex = 0.0;',
-    );
-  }
-  if (shader.includes('sceneIndex = texture(sceneIndexesTexture, getDataUV(1, 0, sceneIndexesTextureSize)).r;')) {
-    shader = shader.replace(
-      'sceneIndex = texture(sceneIndexesTexture, getDataUV(1, 0, sceneIndexesTextureSize)).r;',
-      'sceneIndex = texture(sceneIndexesTexture, getDataUV(1, 0, sceneIndexesTextureSize)).r;\n                vRevealSceneIndex = float(sceneIndex);',
-    );
-  }
-  if (shader.includes('vec3 splatCenter = uintBitsToFloat(uvec3(sampledCenterColor.gba));')) {
-    shader = shader.replace(
-      'vec3 splatCenter = uintBitsToFloat(uvec3(sampledCenterColor.gba));',
-      'vec3 splatCenter = uintBitsToFloat(uvec3(sampledCenterColor.gba));\n            vRevealWorldY = splatCenter.y;\n            vRevealWorldPos = splatCenter;',
-    );
-  }
-  if (shader.includes('mat4 transformModelViewMatrix = viewMatrix * transform;')) {
-    shader = shader.replace(
-      'mat4 transformModelViewMatrix = viewMatrix * transform;',
-      'mat4 transformModelViewMatrix = viewMatrix * transform;\n                vec3 revealWorldCenter = (transform * vec4(splatCenter, 1.0)).xyz;\n                vRevealWorldPos = revealWorldCenter;\n                vRevealWorldY = revealWorldCenter.y;',
-    );
-  }
-  if (shader.includes('mat4 transformModelViewMatrix = modelViewMatrix;')) {
-    shader = shader.replace(
-      'mat4 transformModelViewMatrix = modelViewMatrix;',
-      'mat4 transformModelViewMatrix = modelViewMatrix;\n                vec3 revealWorldCenter = (modelMatrix * vec4(splatCenter, 1.0)).xyz;\n                vRevealWorldPos = revealWorldCenter;\n                vRevealWorldY = revealWorldCenter.y;',
-    );
-  }
-
-  return { shader };
-}
-
-function injectInteriorIntoVertexShader(source: string): { shader: string } {
-  let shader = source;
-  if (!shader.includes('varying vec3 vInteriorSplatPos;')) {
-    shader = `varying vec3 vInteriorSplatPos;\n${shader}`;
-  }
-  if (!shader.includes('varying float vInteriorSceneIndex;')) {
-    shader = `varying float vInteriorSceneIndex;\n${shader}`;
-  }
-  if (shader.includes('uint sceneIndex = uint(0);')) {
-    shader = shader.replace(
-      'uint sceneIndex = uint(0);',
-      'uint sceneIndex = uint(0);\n            vInteriorSceneIndex = 0.0;',
-    );
-  }
-  if (shader.includes('sceneIndex = texture(sceneIndexesTexture, getDataUV(1, 0, sceneIndexesTextureSize)).r;')) {
-    shader = shader.replace(
-      'sceneIndex = texture(sceneIndexesTexture, getDataUV(1, 0, sceneIndexesTextureSize)).r;',
-      'sceneIndex = texture(sceneIndexesTexture, getDataUV(1, 0, sceneIndexesTextureSize)).r;\n                vInteriorSceneIndex = float(sceneIndex);',
-    );
-  }
-  if (shader.includes('vec3 splatCenter = uintBitsToFloat(uvec3(sampledCenterColor.gba));')) {
-    shader = shader.replace(
-      'vec3 splatCenter = uintBitsToFloat(uvec3(sampledCenterColor.gba));',
-      'vec3 splatCenter = uintBitsToFloat(uvec3(sampledCenterColor.gba));\n            vInteriorSplatPos = splatCenter;',
-    );
-  }
-  return { shader };
-}
-
-function injectRevealIntoFragmentShader(source: string): { shader: string } {
-  let shader = source;
-  if (!shader.includes('varying float vRevealWorldY;')) {
-    shader = `varying float vRevealWorldY;\nvarying vec3 vRevealWorldPos;\nvarying float vRevealSceneIndex;\n${shader}`;
-  }
-  if (!shader.includes('uniform float uRevealEnabled[32];')) {
-    shader =
-      `uniform float uRevealEnabled[32];\n` +
-      `uniform float uRevealY[32];\n` +
-      `uniform float uRevealBand[32];\n` +
-      `uniform float uRevealMinY[32];\n` +
-      `uniform float uRevealMaxY[32];\n` +
-      `uniform float uRevealMode[32];\n` +
-      `uniform float uSphereEnabled[32];\n` +
-      `uniform float uSphereOriginX[32];\n` +
-      `uniform float uSphereOriginY[32];\n` +
-      `uniform float uSphereOriginZ[32];\n` +
-      `uniform float uSphereRadius[32];\n` +
-      `uniform float uSphereFeather[32];\n` +
-      `uniform float uClipBottomEnabled[32];\n` +
-      `uniform float uClipBottomY[32];\n` +
-      `uniform float uRevealAffectAlpha[32];\n` +
-      `uniform float uRevealAffectSize[32];\n` +
-      shader;
-  }
-
-  const revealSnippet =
-    '\n  int revealScene = int(vRevealSceneIndex + 0.5);\n' +
-    '  revealScene = clamp(revealScene, 0, 31);\n' +
-    '  if (uClipBottomEnabled[revealScene] > 0.5 && vRevealWorldY < uClipBottomY[revealScene]) {\n' +
-    '    discard;\n' +
-    '  }\n' +
-    '  float revealAlpha = 1.0;\n' +
-    '  if (uRevealEnabled[revealScene] > 0.5) {\n' +
-    '    if (uRevealMode[revealScene] < 0.5) {\n' +
-    '      float revealBand = max(0.0001, uRevealBand[revealScene]);\n' +
-    '      revealAlpha = smoothstep(uRevealY[revealScene] - revealBand, uRevealY[revealScene] + revealBand, vRevealWorldY);\n' +
-    '    } else if (uSphereEnabled[revealScene] > 0.5) {\n' +
-    '      vec3 sphereOrigin = vec3(uSphereOriginX[revealScene], uSphereOriginY[revealScene], uSphereOriginZ[revealScene]);\n' +
-    '      float sphereDist = distance(vRevealWorldPos, sphereOrigin);\n' +
-    '      float feather = max(0.0001, uSphereFeather[revealScene]);\n' +
-      '      revealAlpha = smoothstep(uSphereRadius[revealScene] - feather, uSphereRadius[revealScene] + feather, sphereDist);\n' +
-      '      revealAlpha = 1.0 - revealAlpha;\n' +
-    '    }\n' +
-    '  }\n' +
-    '  if (uRevealAffectAlpha[revealScene] > 0.5) {\n' +
-    '    gl_FragColor.a *= revealAlpha;\n' +
-    '  }\n';
-
-  if (shader.includes('#include <dithering_fragment>')) {
-    shader = shader.replace(
-      '#include <dithering_fragment>',
-      `${revealSnippet}\n  #include <dithering_fragment>`,
-    );
-  } else {
-    shader = shader.replace(/\}\s*$/, `${revealSnippet}\n}`);
-  }
-
-  return { shader };
-}
-
-function injectInteriorIntoFragmentShader(source: string): { shader: string } {
-  let shader = source;
-  if (!shader.includes('varying vec3 vInteriorSplatPos;')) {
-    shader = `varying vec3 vInteriorSplatPos;\n${shader}`;
-  }
-  if (!shader.includes('varying float vInteriorSceneIndex;')) {
-    shader = `varying float vInteriorSceneIndex;\n${shader}`;
-  }
-  if (!shader.includes('uniform float uInteriorEnabled;')) {
-    shader =
-      `uniform float uInteriorEnabled;\n` +
-      `uniform vec3 uInteriorTarget;\n` +
-      `uniform float uInteriorRadius;\n` +
-      `uniform float uInteriorSoftness;\n` +
-      `uniform float uInteriorFadeAlpha;\n` +
-      `uniform float uInteriorMaxDist;\n` +
-      `uniform float uInteriorAffectSize;\n` +
-      `uniform vec3 uInteriorCameraPos;\n` +
-      shader;
-  }
-
-  const snippet =
-    '\n  if (uInteriorEnabled > 0.5) {\n' +
-    '    vec3 A = uInteriorCameraPos;\n' +
-    '    vec3 B = uInteriorTarget;\n' +
-    '    vec3 AB = B - A;\n' +
-    '    float abLen = length(AB);\n' +
-    '    if (abLen > 0.0001 && abLen <= uInteriorMaxDist) {\n' +
-    '      float abLenSq = dot(AB, AB);\n' +
-    '      vec3 AP = vInteriorSplatPos - A;\n' +
-    '      float t = clamp(dot(AP, AB) / abLenSq, 0.0, 1.0);\n' +
-    '      if (t > 0.0 && t < 1.0) {\n' +
-    '        vec3 closest = A + t * AB;\n' +
-    '        float d = length(vInteriorSplatPos - closest);\n' +
-    '        float soft = max(0.0001, uInteriorSoftness * uInteriorRadius);\n' +
-    '        float m = smoothstep(uInteriorRadius, uInteriorRadius - soft, d);\n' +
-    '        gl_FragColor.a = mix(gl_FragColor.a, gl_FragColor.a * uInteriorFadeAlpha, m);\n' +
-    '        if (uInteriorAffectSize > 0.5) {\n' +
-    '          gl_FragColor.a *= mix(1.0, 0.7, m);\n' +
-    '        }\n' +
-    '      }\n' +
-    '    }\n' +
-    '  }\n';
-
-  if (shader.includes('#include <dithering_fragment>')) {
-    shader = shader.replace('#include <dithering_fragment>', `${snippet}\n  #include <dithering_fragment>`);
-  } else {
-    shader = shader.replace(/\}\s*$/, `${snippet}\n}`);
-  }
-
-  return { shader };
-}
-
-function getAssetExtension(path: string): string | null {
-  const clean = path.split('?')[0].split('#')[0];
-  const dotIndex = clean.lastIndexOf('.');
-  if (dotIndex < 0) {
-    return null;
-  }
-  return clean.slice(dotIndex).toLowerCase();
 }

@@ -19,6 +19,7 @@ const DEFAULT_INPUT_CANDIDATES = [
   'public/scenes/hodsock-gatehouse/splats/HodsockCombined30k.ksplat',
   'public/scenes/hodsock-gatehouse/splats/HodsockCombined30k.spz',
   'public/scenes/hodsock-gatehouse/splats/HodsockCombined30k.sog',
+  'public/scenes/hodsock-gatehouse/splats/sog/balanced/lod/lod-meta.json',
 ];
 const DEFAULT_OUTPUT_ROOT = 'public/scenes/hodsock-gatehouse/splats/sog';
 
@@ -117,8 +118,8 @@ async function getDirectorySize(directoryPath) {
   return total;
 }
 
-function buildProcessActions(preset) {
-  return [
+function buildProcessActions(preset, includeLodAssignment) {
+  const actions = [
     { kind: 'filterNaN' },
     { kind: 'filterBands', value: preset.harmonics },
     {
@@ -128,6 +129,11 @@ function buildProcessActions(preset) {
       value: preset.opacityThreshold,
     },
   ];
+  if (includeLodAssignment) {
+    // Ensure LOD streaming output can be produced even when source data has no explicit lod column.
+    actions.push({ kind: 'lod', value: 0 });
+  }
+  return actions;
 }
 
 function buildTransformOptions(iterationsArg, lodChunkCountArg, lodChunkExtentArg) {
@@ -144,7 +150,7 @@ function buildTransformOptions(iterationsArg, lodChunkCountArg, lodChunkExtentAr
   };
 }
 
-async function loadProcessedDataTable(inputPath, options, preset) {
+async function loadProcessedDataTable(inputPath, options, preset, mode) {
   const inputData = await fs.readFile(inputPath);
   const inputFormat = getInputFormat(inputPath);
   const readFs = new MemoryReadFileSystem();
@@ -162,7 +168,7 @@ async function loadProcessedDataTable(inputPath, options, preset) {
     throw new Error('No Gaussian splat tables were read from input asset.');
   }
 
-  const actions = buildProcessActions(preset);
+  const actions = buildProcessActions(preset, mode === 'lod' || mode === 'all');
   const processed = dataTables
     .map((table) => processDataTable(table, actions))
     .filter((table) => table !== null && table.numRows > 0);
@@ -177,12 +183,15 @@ async function loadProcessedDataTable(inputPath, options, preset) {
 async function writeMemoryFilesToDisk(memoryFs, targetRoot, keepOnly = null) {
   await fs.mkdir(targetRoot, { recursive: true });
   let bytesWritten = 0;
+  const cwd = process.cwd();
 
   for (const [name, data] of memoryFs.results.entries()) {
     if (keepOnly && !keepOnly(name)) {
       continue;
     }
-    const outputPath = path.join(targetRoot, name);
+    const normalizedName = path.isAbsolute(name) ? path.relative(cwd, name) : name;
+    const safeName = normalizedName.replace(/^(\.\.[\\/])+/, '');
+    const outputPath = path.join(targetRoot, safeName);
     await fs.mkdir(path.dirname(outputPath), { recursive: true });
     await fs.writeFile(outputPath, Buffer.from(data));
     bytesWritten += data.byteLength;
@@ -213,7 +222,7 @@ async function run() {
   );
 
   const started = performance.now();
-  const dataTable = await loadProcessedDataTable(inputPath, options, preset);
+  const dataTable = await loadProcessedDataTable(inputPath, options, preset, mode);
 
   if (mode === 'all' || mode === 'bundled') {
     const memoryFs = new MemoryFileSystem();

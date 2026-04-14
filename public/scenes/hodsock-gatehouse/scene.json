@@ -4,7 +4,7 @@
   "assets": [
     {
       "id": "gatehouse_main",
-      "src": "scenes/hodsock-gatehouse/splats/HodsockCombined30k.sog",
+      "src": "scenes/hodsock-gatehouse/splats/sog/balanced/lod/lod-meta.json",
       "transform": {
         "position": [0, 0, 0],
         "rotation": [180, -203, 0],
@@ -63,6 +63,21 @@
     "firstLoadParticleDurationMs": 900,
     "firstLoadDisableStaticPointCloud": true,
     "maxDevicePixelRatio": 0.9
+  },
+  "sogRuntime": {
+    "unified": true,
+    "highQualitySH": false,
+    "splatBudget": 1200000,
+    "lodBaseDistance": 4.8,
+    "lodMultiplier": 2.2,
+    "lodRangeMin": 0,
+    "lodRangeMax": 10,
+    "lodUpdateDistance": 0.6,
+    "lodUpdateAngle": 4,
+    "lodUnderfillLimit": 2,
+    "colorUpdateDistance": 0.45,
+    "colorUpdateAngle": 3,
+    "cooldownTicks": 160
   },
   "reveal": {
     "enabled": true,

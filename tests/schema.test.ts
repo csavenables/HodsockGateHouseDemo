@@ -57,6 +57,10 @@ describe('validateSceneConfig', () => {
       expect(result.data.performanceProfile.firstLoadParticleDurationMs).toBe(2600);
       expect(result.data.performanceProfile.firstLoadDisableStaticPointCloud).toBe(true);
       expect(result.data.performanceProfile.maxDevicePixelRatio).toBe(1.1);
+      expect(result.data.sogRuntime.unified).toBe(true);
+      expect(result.data.sogRuntime.highQualitySH).toBe(false);
+      expect(result.data.sogRuntime.lodBaseDistance).toBe(5);
+      expect(result.data.sogRuntime.lodMultiplier).toBe(3);
       expect(result.data.interiorView.enabled).toBe(false);
       expect(result.data.interiorView.radius).toBe(0.45);
       expect(result.data.annotations.enabled).toBe(false);
@@ -171,8 +175,41 @@ describe('validateSceneConfig', () => {
     const result = validateSceneConfig(invalid);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.errors.join(' ')).toContain('requires ".sog"');
+      expect(result.errors.join(' ')).toContain('requires ".sog" or "lod-meta.json"');
     }
+  });
+
+  it('accepts lod-meta source for hodsock', () => {
+    const valid = {
+      id: 'hodsock-gatehouse',
+      title: 'Hodsock',
+      assets: [
+        {
+          id: 'main',
+          src: '/scenes/hodsock-gatehouse/splats/sog/balanced/lod/lod-meta.json',
+          transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+          visibleDefault: true,
+        },
+      ],
+      camera: {
+        home: { position: [0, 0, 2], target: [0, 0, 0], fov: 50 },
+        limits: { minDistance: 0.4, maxDistance: 4, minPolarAngle: 0.1, maxPolarAngle: 2.9 },
+        transitionMs: 500,
+      },
+      ui: {
+        enableFullscreen: true,
+        enableAutorotate: true,
+        enableReset: true,
+        enablePan: true,
+        autorotateDefaultOn: false,
+      },
+      transitions: {
+        sceneFadeMs: 300,
+      },
+    };
+
+    const result = validateSceneConfig(valid);
+    expect(result.ok).toBe(true);
   });
 
   it('rejects configs with more than 5 assets', () => {

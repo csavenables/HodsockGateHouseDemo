@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { InteriorViewConfig, RevealConfig, SplatAssetConfig } from '../config/schema';
+import { InteriorViewConfig, RevealConfig, SceneConfig, SplatAssetConfig } from '../config/schema';
 
 export interface SplatFitData {
   center: THREE.Vector3;
@@ -97,6 +97,7 @@ export interface RendererContext {
 
 export interface SplatRenderer {
   initialize(context: RendererContext): Promise<void>;
+  configureScene(config: SceneConfig): void;
   loadSplats(assets: SplatAssetConfig[]): Promise<SplatHandle[]>;
   loadSplat(asset: SplatAssetConfig): Promise<SplatHandle>;
   setVisible(id: string, visible: boolean): void;

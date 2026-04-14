@@ -91,6 +91,7 @@ export class SceneManager {
 
     this.events.onLoading('Loading splat assets...');
     try {
+      this.renderer.configureScene(config);
       await this.renderer.clear();
       if (loadVersion !== this.opVersion) {
         return this.activeConfig ?? config;

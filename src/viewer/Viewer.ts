@@ -169,6 +169,7 @@ export class Viewer {
     try {
       this.loadStartedAtMs = performance.now();
       this.firstFrameLogged = false;
+      this.activeConfig = null;
       this.annotationManager.clear();
       this.ui.clearError();
       const config = await this.sceneManager.loadScene(sceneId);
@@ -351,7 +352,7 @@ export class Viewer {
 
   private onFrame = (): void => {
     const now = performance.now();
-    if (!this.firstFrameLogged && this.loadStartedAtMs > 0) {
+    if (!this.firstFrameLogged && this.loadStartedAtMs > 0 && this.activeConfig) {
       this.firstFrameLogged = true;
       const firstFrameMs = Math.max(0, now - this.loadStartedAtMs);
       console.info(

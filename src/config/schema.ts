@@ -164,6 +164,22 @@ export interface PerformanceProfileConfig {
   maxDevicePixelRatio: number;
 }
 
+export interface SogRuntimeConfig {
+  unified: boolean;
+  highQualitySH: boolean;
+  splatBudget: number;
+  lodBaseDistance: number;
+  lodMultiplier: number;
+  lodRangeMin: number;
+  lodRangeMax: number;
+  lodUpdateDistance: number;
+  lodUpdateAngle: number;
+  lodUnderfillLimit: number;
+  colorUpdateDistance: number;
+  colorUpdateAngle: number;
+  cooldownTicks: number;
+}
+
 export interface SceneConfig {
   id: string;
   title: string;
@@ -179,6 +195,7 @@ export interface SceneConfig {
   presentation: PresentationConfig;
   cinematicReveal: CinematicRevealConfig;
   performanceProfile: PerformanceProfileConfig;
+  sogRuntime: SogRuntimeConfig;
   interiorView: InteriorViewConfig;
   annotations: AnnotationsConfig;
 }
@@ -348,6 +365,10 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
   if (performanceProfileValue !== undefined && !isObject(performanceProfileValue)) {
     errors.push('"performanceProfile" must be an object when provided.');
   }
+  const sogRuntimeValue = raw.sogRuntime;
+  if (sogRuntimeValue !== undefined && !isObject(sogRuntimeValue)) {
+    errors.push('"sogRuntime" must be an object when provided.');
+  }
   const interiorValue = raw.interiorView;
   if (interiorValue !== undefined && !isObject(interiorValue)) {
     errors.push('"interiorView" must be an object when provided.');
@@ -361,6 +382,7 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
   const presentationObject = isObject(presentationValue) ? presentationValue : {};
   const cinematicRevealObject = isObject(cinematicRevealValue) ? cinematicRevealValue : {};
   const performanceProfileObject = isObject(performanceProfileValue) ? performanceProfileValue : {};
+  const sogRuntimeObject = isObject(sogRuntimeValue) ? sogRuntimeValue : {};
   const particleIntroValue = revealObject.particleIntro;
   if (particleIntroValue !== undefined && !isObject(particleIntroValue)) {
     errors.push('"reveal.particleIntro" must be an object when provided.');
@@ -612,6 +634,24 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
         ? performanceProfileObject.maxDevicePixelRatio
         : 1.1,
     },
+    sogRuntime: {
+      unified: typeof sogRuntimeObject.unified === 'boolean' ? sogRuntimeObject.unified : true,
+      highQualitySH:
+        typeof sogRuntimeObject.highQualitySH === 'boolean' ? sogRuntimeObject.highQualitySH : false,
+      splatBudget: isNumber(sogRuntimeObject.splatBudget) ? sogRuntimeObject.splatBudget : 0,
+      lodBaseDistance: isNumber(sogRuntimeObject.lodBaseDistance) ? sogRuntimeObject.lodBaseDistance : 5,
+      lodMultiplier: isNumber(sogRuntimeObject.lodMultiplier) ? sogRuntimeObject.lodMultiplier : 3,
+      lodRangeMin: isNumber(sogRuntimeObject.lodRangeMin) ? sogRuntimeObject.lodRangeMin : 0,
+      lodRangeMax: isNumber(sogRuntimeObject.lodRangeMax) ? sogRuntimeObject.lodRangeMax : 10,
+      lodUpdateDistance: isNumber(sogRuntimeObject.lodUpdateDistance) ? sogRuntimeObject.lodUpdateDistance : 0.8,
+      lodUpdateAngle: isNumber(sogRuntimeObject.lodUpdateAngle) ? sogRuntimeObject.lodUpdateAngle : 0,
+      lodUnderfillLimit: isNumber(sogRuntimeObject.lodUnderfillLimit) ? sogRuntimeObject.lodUnderfillLimit : 1,
+      colorUpdateDistance: isNumber(sogRuntimeObject.colorUpdateDistance)
+        ? sogRuntimeObject.colorUpdateDistance
+        : 0.3,
+      colorUpdateAngle: isNumber(sogRuntimeObject.colorUpdateAngle) ? sogRuntimeObject.colorUpdateAngle : 2,
+      cooldownTicks: isNumber(sogRuntimeObject.cooldownTicks) ? sogRuntimeObject.cooldownTicks : 100,
+    },
     interiorView: {
       enabled: typeof interiorObject.enabled === 'boolean' ? interiorObject.enabled : false,
       target: isVec3(interiorObject.target) ? interiorObject.target : [0, 0, 0],
@@ -718,6 +758,39 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
   if (config.performanceProfile.maxDevicePixelRatio <= 0) {
     errors.push('"performanceProfile.maxDevicePixelRatio" must be > 0.');
   }
+  if (config.sogRuntime.splatBudget < 0) {
+    errors.push('"sogRuntime.splatBudget" must be >= 0.');
+  }
+  if (config.sogRuntime.lodBaseDistance <= 0) {
+    errors.push('"sogRuntime.lodBaseDistance" must be > 0.');
+  }
+  if (config.sogRuntime.lodMultiplier <= 1) {
+    errors.push('"sogRuntime.lodMultiplier" must be > 1.');
+  }
+  if (config.sogRuntime.lodRangeMin < 0) {
+    errors.push('"sogRuntime.lodRangeMin" must be >= 0.');
+  }
+  if (config.sogRuntime.lodRangeMax < config.sogRuntime.lodRangeMin) {
+    errors.push('"sogRuntime.lodRangeMax" must be >= "sogRuntime.lodRangeMin".');
+  }
+  if (config.sogRuntime.lodUpdateDistance < 0) {
+    errors.push('"sogRuntime.lodUpdateDistance" must be >= 0.');
+  }
+  if (config.sogRuntime.lodUpdateAngle < 0) {
+    errors.push('"sogRuntime.lodUpdateAngle" must be >= 0.');
+  }
+  if (config.sogRuntime.lodUnderfillLimit < 0) {
+    errors.push('"sogRuntime.lodUnderfillLimit" must be >= 0.');
+  }
+  if (config.sogRuntime.colorUpdateDistance < 0) {
+    errors.push('"sogRuntime.colorUpdateDistance" must be >= 0.');
+  }
+  if (config.sogRuntime.colorUpdateAngle < 0) {
+    errors.push('"sogRuntime.colorUpdateAngle" must be >= 0.');
+  }
+  if (config.sogRuntime.cooldownTicks < 0) {
+    errors.push('"sogRuntime.cooldownTicks" must be >= 0.');
+  }
   if (config.interiorView.radius <= 0) {
     errors.push('"interiorView.radius" must be > 0.');
   }
@@ -757,8 +830,10 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
   if (config.id === 'hodsock-gatehouse') {
     for (const asset of config.assets) {
       const normalized = asset.src.toLowerCase();
-      if (!normalized.endsWith('.sog')) {
-        errors.push(`Hodsock SOG-native mode requires ".sog" asset sources. Invalid src: "${asset.src}".`);
+      if (!normalized.endsWith('.sog') && !normalized.endsWith('lod-meta.json')) {
+        errors.push(
+          `Hodsock SOG-native mode requires ".sog" or "lod-meta.json" asset sources. Invalid src: "${asset.src}".`,
+        );
       }
       if (asset.fallbackSrc) {
         errors.push(`Hodsock SOG-native mode does not allow fallbackSrc. Remove fallbackSrc from "${asset.id}".`);
