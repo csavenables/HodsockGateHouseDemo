@@ -1,11 +1,39 @@
+@font-face {
+  font-family: 'Cormorant Garamond';
+  src: url('/fonts/cormorant/CormorantGaramond-Regular.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Cormorant Garamond';
+  src: url('/fonts/cormorant/CormorantGaramond-SemiBold.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Cormorant Garamond';
+  src: url('/fonts/cormorant/CormorantGaramond-Bold.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
 :root {
-  --bg: #0b0e14;
+  --bg: #fff;
   --panel: #121826;
   --text: #ecf2ff;
   --muted: #9ba7c2;
   --accent: #22c1c3;
   --accent-strong: #1a9ca6;
   --danger: #d0455b;
+  --shell-text: #1f2a3a;
+  --shell-muted: #667287;
+  --shell-border: rgb(20 35 55 / 14%);
+  --shell-panel-bg: rgb(255 255 255 / 92%);
 }
 
 * {
@@ -20,9 +48,9 @@ body,
   height: 100dvh;
   min-height: -webkit-fill-available;
   overflow: hidden;
-  background: #000;
-  color: var(--text);
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: #fff;
+  color: var(--shell-text);
+  font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
 }
 
 .app-shell {
@@ -40,26 +68,30 @@ body,
   align-items: baseline;
   justify-content: space-between;
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid rgb(255 255 255 / 10%);
-  background: rgb(18 24 38 / 80%);
+  border-bottom: 1px solid var(--shell-border);
+  background: var(--shell-panel-bg);
   backdrop-filter: blur(8px);
 }
 
 .app-title {
   margin: 0;
-  font-size: 1rem;
-  letter-spacing: 0.04em;
+  font-size: 1.4rem;
+  line-height: 1;
+  letter-spacing: 0.03em;
+  color: var(--shell-text);
+  font-weight: 600;
 }
 
 .scene-title {
   margin: 0;
-  color: var(--muted);
-  font-size: 0.85rem;
+  color: var(--shell-muted);
+  font-size: 1rem;
 }
 
 .viewer-root {
   position: relative;
   min-height: 0;
+  background: #000;
 }
 
 .app-shell.app-shell-embed .viewer-root {
@@ -70,6 +102,95 @@ body,
 .viewer-host {
   width: 100%;
   height: 100%;
+}
+
+.brand-logo {
+  position: absolute;
+  top: max(1rem, env(safe-area-inset-top));
+  left: max(1rem, env(safe-area-inset-left));
+  z-index: 8;
+  pointer-events: none;
+}
+
+.brand-logo[data-position='top-right'] {
+  left: auto;
+  right: max(1rem, env(safe-area-inset-right));
+}
+
+.brand-logo img {
+  display: block;
+  max-width: min(180px, 42vw);
+  max-height: 76px;
+  object-fit: contain;
+}
+
+.entry-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  display: grid;
+  place-items: center;
+  pointer-events: auto;
+  background:
+    linear-gradient(165deg, rgb(0 0 0 / 74%) 0%, rgb(0 0 0 / 58%) 35%, rgb(0 0 0 / 74%) 100%);
+  opacity: 1;
+  transition: opacity 480ms ease, visibility 0ms linear 480ms;
+}
+
+.entry-overlay.is-dismissed {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.entry-overlay-content {
+  width: min(780px, calc(100vw - 48px));
+  text-align: center;
+  color: #fff;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.entry-title {
+  margin: 0;
+  font-size: clamp(2.2rem, 5.4vw, 4.4rem);
+  line-height: 0.96;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+}
+
+.entry-subline {
+  margin: 0 auto;
+  width: min(620px, 100%);
+  font-size: clamp(1.08rem, 2.05vw, 1.58rem);
+  line-height: 1.22;
+  color: rgb(255 255 255 / 90%);
+}
+
+.entry-button {
+  justify-self: center;
+  margin-top: 0.15rem;
+  border: 1px solid rgb(255 255 255 / 64%);
+  background: rgb(255 255 255 / 14%);
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.64rem 1.42rem;
+  font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  font-size: 1.3rem;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+}
+
+.entry-button:hover {
+  background: rgb(255 255 255 / 22%);
+}
+
+.app-shell.entry-active .viewer-host,
+.app-shell.entry-active .annotation-host,
+.app-shell.entry-active .replay-button,
+.app-shell.entry-active .annotation-fab,
+.app-shell.entry-active .fullscreen-fab {
+  pointer-events: none;
 }
 
 .annotation-host {
@@ -146,22 +267,24 @@ body,
 .annotation-nav {
   position: absolute;
   left: 50%;
-  bottom: 0.8rem;
+  bottom: max(0.7rem, env(safe-area-inset-bottom));
   transform: translateX(-50%);
-  width: min(340px, calc(100% - 24px));
+  width: min(300px, calc(100% - 24px));
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.45rem;
+  gap: 0.5rem;
   pointer-events: auto;
 }
 
 .annotation-nav-btn {
-  border: 1px solid rgb(255 255 255 / 20%);
-  background: #1f273a;
-  color: var(--text);
-  border-radius: 0.45rem;
+  border: 1px solid var(--shell-border);
+  background: rgb(255 255 255 / 92%);
+  color: #000;
+  border-radius: 999px;
   padding: 0.42rem 0.55rem;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   cursor: pointer;
 }
 
@@ -170,8 +293,19 @@ body,
   cursor: not-allowed;
 }
 
+.annotation-nav-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.annotation-nav-btn-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
 .annotation-nav-btn-close {
-  border-color: rgb(34 193 195 / 65%);
+  font-weight: 600;
 }
 
 .splat-panel {
@@ -181,15 +315,16 @@ body,
   z-index: 4;
   width: min(220px, 42vw);
   padding: 0.55rem;
-  border: 1px solid rgb(255 255 255 / 14%);
+  border: 1px solid var(--shell-border);
   border-radius: 0.6rem;
-  background: rgb(14 21 34 / 78%);
+  background: var(--shell-panel-bg);
   backdrop-filter: blur(8px);
+  color: var(--shell-text);
 }
 
 .splat-panel-title {
   margin: 0 0 0.5rem;
-  color: var(--muted);
+  color: var(--shell-muted);
   font-size: 0.75rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -211,12 +346,23 @@ body,
 }
 
 .annotation-editor {
-  margin-top: 0.6rem;
-  padding-top: 0.55rem;
-  border-top: 1px solid rgb(255 255 255 / 12%);
+  position: absolute;
+  top: max(3.6rem, calc(env(safe-area-inset-top) + 3.6rem));
+  right: max(0.8rem, env(safe-area-inset-right));
+  z-index: 10;
+  width: min(330px, calc(100vw - 24px));
+  max-height: min(70dvh, 700px);
+  overflow: auto;
+  padding: 0.7rem;
+  border: 1px solid var(--shell-border);
+  border-radius: 0.75rem;
+  background: rgb(255 255 255 / 95%);
+  color: #000;
+  backdrop-filter: blur(6px);
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.4rem;
+  pointer-events: auto;
 }
 
 .annotation-editor select,
@@ -225,12 +371,12 @@ body,
 .annotation-editor textarea {
   flex: 1;
   min-width: 0;
-  border: 1px solid rgb(255 255 255 / 20%);
+  border: 1px solid rgb(20 35 55 / 18%);
   border-radius: 0.35rem;
-  background: #111a2a;
-  color: var(--text);
-  padding: 0.2rem 0.35rem;
-  font-size: 0.7rem;
+  background: #fff;
+  color: #000;
+  padding: 0.3rem 0.38rem;
+  font-size: 0.74rem;
 }
 
 .annotation-editor textarea {
@@ -244,10 +390,14 @@ body,
   gap: 0.3rem;
 }
 
+.annotation-editor-actions-primary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .annotation-editor-actions .splat-toggle {
   text-align: center;
-  padding: 0.28rem 0.25rem;
-  font-size: 0.7rem;
+  padding: 0.32rem 0.25rem;
+  font-size: 0.66rem;
 }
 
 .annotation-textarea-row {
@@ -256,9 +406,17 @@ body,
 
 .interior-title {
   margin: 0 0 0.2rem;
-  color: var(--muted);
+  color: #000;
   font-size: 0.72rem;
   letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.annotation-editor-status {
+  margin: 0 0 0.2rem;
+  color: #3a4a61;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
@@ -268,7 +426,7 @@ body,
   justify-content: space-between;
   gap: 0.45rem;
   font-size: 0.7rem;
-  color: var(--muted);
+  color: #3a4a61;
 }
 
 .interior-row input[type='range'] {
@@ -280,9 +438,9 @@ body,
 }
 
 .splat-toggle {
-  border: 1px solid rgb(255 255 255 / 20%);
-  background: #1f273a;
-  color: var(--text);
+  border: 1px solid var(--shell-border);
+  background: #fff;
+  color: var(--shell-text);
   border-radius: 0.45rem;
   padding: 0.35rem 0.5rem;
   font-size: 0.78rem;
@@ -292,7 +450,7 @@ body,
 }
 
 .splat-toggle:hover {
-  background: #2a344c;
+  background: #f3f6fb;
 }
 
 .splat-toggle.active {
@@ -322,12 +480,48 @@ body,
   background: #000;
 }
 
+.annotation-fab,
+.fullscreen-fab {
+  position: absolute;
+  z-index: 9;
+  border: 1px solid var(--shell-border);
+  background: rgb(255 255 255 / 92%);
+  color: #000;
+  border-radius: 999px;
+  padding: 0.42rem 0.92rem;
+  font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+}
+
+.annotation-fab {
+  top: max(0.8rem, env(safe-area-inset-top));
+  right: max(0.8rem, env(safe-area-inset-right));
+}
+
+.fullscreen-fab {
+  right: max(0.8rem, env(safe-area-inset-right));
+  bottom: max(0.8rem, env(safe-area-inset-bottom));
+}
+
+.annotation-fab:hover,
+.fullscreen-fab:hover {
+  background: #fff;
+}
+
+.annotation-fab.active,
+.fullscreen-fab.active {
+  border-color: rgb(34 193 195 / 60%);
+}
+
 .replay-button {
   position: absolute;
   right: max(0.8rem, env(safe-area-inset-right));
-  bottom: max(0.8rem, env(safe-area-inset-bottom));
+  bottom: calc(max(0.8rem, env(safe-area-inset-bottom)) + 2.8rem);
   z-index: 6;
-  border: 1px solid rgb(255 255 255 / 40%);
+  border: 1px solid rgb(255 255 255 / 48%);
   background: rgb(12 20 30 / 70%);
   color: var(--text);
   border-radius: 999px;
@@ -349,13 +543,13 @@ body,
   gap: 0.5rem;
   padding: 0.75rem 1rem;
   padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
-  border-top: 1px solid rgb(255 255 255 / 10%);
-  background: rgb(18 24 38 / 80%);
+  border-top: 1px solid var(--shell-border);
+  background: var(--shell-panel-bg);
 }
 
 .app-footer p {
   margin: 0;
-  color: var(--muted);
+  color: var(--shell-muted);
   font-size: 0.75rem;
 }
 
@@ -365,9 +559,9 @@ body,
 }
 
 .toolbar-button {
-  border: 1px solid rgb(255 255 255 / 20%);
-  background: #1f273a;
-  color: var(--text);
+  border: 1px solid var(--shell-border);
+  background: #fff;
+  color: var(--shell-text);
   border-radius: 0.45rem;
   padding: 0.45rem 0.7rem;
   font-size: 0.8rem;
@@ -376,7 +570,7 @@ body,
 }
 
 .toolbar-button:hover {
-  background: #2a344c;
+  background: #f3f6fb;
 }
 
 .toolbar-button.active,

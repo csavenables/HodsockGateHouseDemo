@@ -121,10 +121,18 @@ export interface AnnotationOcclusionConfig {
   epsilon: number;
 }
 
+export interface AnnotationDeclutterConfig {
+  selectedOnlyStrong: boolean;
+  unselectedAlpha: number;
+  maxVisibleUnselected: number;
+}
+
 export interface AnnotationUiConfig {
   showTooltip: boolean;
   showNav: boolean;
+  wrapNavigation: boolean;
   pinStyle: 'numbered';
+  declutter: AnnotationDeclutterConfig;
   occlusion: AnnotationOcclusionConfig;
 }
 
@@ -133,6 +141,19 @@ export interface AnnotationsConfig {
   defaultSelectedId: string | null;
   pins: AnnotationPinConfig[];
   ui: AnnotationUiConfig;
+}
+
+export type BrandingLogoPosition = 'top-left' | 'top-right';
+
+export interface BrandingLogoConfig {
+  enabled: boolean;
+  src: string;
+  alt: string;
+  position: BrandingLogoPosition;
+}
+
+export interface BrandingConfig {
+  logo: BrandingLogoConfig;
 }
 
 export interface PresentationConfig {
@@ -198,6 +219,7 @@ export interface SceneConfig {
   sogRuntime: SogRuntimeConfig;
   interiorView: InteriorViewConfig;
   annotations: AnnotationsConfig;
+  branding: BrandingConfig;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -377,6 +399,10 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
   if (annotationsValue !== undefined && !isObject(annotationsValue)) {
     errors.push('"annotations" must be an object when provided.');
   }
+  const brandingValue = raw.branding;
+  if (brandingValue !== undefined && !isObject(brandingValue)) {
+    errors.push('"branding" must be an object when provided.');
+  }
   const transitionsObject = isObject(transitionsValue) ? transitionsValue : {};
   const revealObject = isObject(revealValue) ? revealValue : {};
   const presentationObject = isObject(presentationValue) ? presentationValue : {};
@@ -400,13 +426,24 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
   const bottomClipObject = isObject(bottomClipValue) ? bottomClipValue : {};
   const interiorObject = isObject(interiorValue) ? interiorValue : {};
   const annotationsObject = isObject(annotationsValue) ? annotationsValue : {};
+  const brandingObject = isObject(brandingValue) ? brandingValue : {};
+  if (brandingObject.logo !== undefined && !isObject(brandingObject.logo)) {
+    errors.push('"branding.logo" must be an object when provided.');
+  }
+  const brandingLogoObject = isObject(brandingObject.logo) ? brandingObject.logo : {};
   if (annotationsObject.ui !== undefined && !isObject(annotationsObject.ui)) {
     errors.push('"annotations.ui" must be an object when provided.');
+  }
+  if (isObject(annotationsObject.ui) && annotationsObject.ui.declutter !== undefined && !isObject(annotationsObject.ui.declutter)) {
+    errors.push('"annotations.ui.declutter" must be an object when provided.');
   }
   if (isObject(annotationsObject.ui) && annotationsObject.ui.occlusion !== undefined && !isObject(annotationsObject.ui.occlusion)) {
     errors.push('"annotations.ui.occlusion" must be an object when provided.');
   }
   const annotationsUiObject = isObject(annotationsObject.ui) ? annotationsObject.ui : {};
+  const annotationsDeclutterObject = isObject(annotationsUiObject.declutter)
+    ? annotationsUiObject.declutter
+    : {};
   const annotationsOcclusionObject = isObject(annotationsUiObject.occlusion)
     ? annotationsUiObject.occlusion
     : {};
@@ -668,7 +705,21 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
       ui: {
         showTooltip: typeof annotationsUiObject.showTooltip === 'boolean' ? annotationsUiObject.showTooltip : true,
         showNav: typeof annotationsUiObject.showNav === 'boolean' ? annotationsUiObject.showNav : true,
+        wrapNavigation:
+          typeof annotationsUiObject.wrapNavigation === 'boolean' ? annotationsUiObject.wrapNavigation : true,
         pinStyle: annotationsUiObject.pinStyle === 'numbered' ? 'numbered' : 'numbered',
+        declutter: {
+          selectedOnlyStrong:
+            typeof annotationsDeclutterObject.selectedOnlyStrong === 'boolean'
+              ? annotationsDeclutterObject.selectedOnlyStrong
+              : true,
+          unselectedAlpha: isNumber(annotationsDeclutterObject.unselectedAlpha)
+            ? annotationsDeclutterObject.unselectedAlpha
+            : 0.18,
+          maxVisibleUnselected: isNumber(annotationsDeclutterObject.maxVisibleUnselected)
+            ? annotationsDeclutterObject.maxVisibleUnselected
+            : 6,
+        },
         occlusion: {
           enabled:
             typeof annotationsOcclusionObject.enabled === 'boolean'
@@ -682,6 +733,17 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
               : true,
           epsilon: isNumber(annotationsOcclusionObject.epsilon) ? annotationsOcclusionObject.epsilon : 0.01,
         },
+      },
+    },
+    branding: {
+      logo: {
+        enabled: typeof brandingLogoObject.enabled === 'boolean' ? brandingLogoObject.enabled : false,
+        src: typeof brandingLogoObject.src === 'string' ? brandingLogoObject.src : '',
+        alt: typeof brandingLogoObject.alt === 'string' ? brandingLogoObject.alt : 'Hodsock Priory',
+        position:
+          brandingLogoObject.position === 'top-right' || brandingLogoObject.position === 'top-left'
+            ? brandingLogoObject.position
+            : 'top-left',
       },
     },
   };
@@ -826,6 +888,15 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
   if (config.annotations.ui.occlusion.epsilon < 0) {
     errors.push('"annotations.ui.occlusion.epsilon" must be >= 0.');
   }
+  if (config.annotations.ui.declutter.unselectedAlpha < 0 || config.annotations.ui.declutter.unselectedAlpha > 1) {
+    errors.push('"annotations.ui.declutter.unselectedAlpha" must be between 0 and 1.');
+  }
+  if (config.annotations.ui.declutter.maxVisibleUnselected < 0) {
+    errors.push('"annotations.ui.declutter.maxVisibleUnselected" must be >= 0.');
+  }
+  if (config.branding.logo.enabled && config.branding.logo.src.trim().length === 0) {
+    errors.push('"branding.logo.src" must be a non-empty string when branding.logo.enabled is true.');
+  }
 
   if (config.id === 'hodsock-gatehouse') {
     for (const asset of config.assets) {
@@ -843,6 +914,8 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
 
   config.interiorView.softness = Math.min(0.6, Math.max(0.05, config.interiorView.softness));
   config.interiorView.fadeAlpha = Math.min(1, Math.max(0, config.interiorView.fadeAlpha));
+  config.annotations.ui.declutter.unselectedAlpha = Math.min(1, Math.max(0, config.annotations.ui.declutter.unselectedAlpha));
+  config.annotations.ui.declutter.maxVisibleUnselected = Math.max(0, Math.floor(config.annotations.ui.declutter.maxVisibleUnselected));
   config.annotations.ui.occlusion.fadeAlpha = Math.min(1, Math.max(0, config.annotations.ui.occlusion.fadeAlpha));
   config.annotations.pins.sort((a, b) => a.order - b.order);
 

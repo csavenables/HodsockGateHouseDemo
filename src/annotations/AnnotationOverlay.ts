@@ -13,6 +13,10 @@ export class AnnotationOverlay {
   private readonly pinElements = new Map<string, HTMLButtonElement>();
 
   constructor(host: HTMLElement, callbacks: AnnotationOverlayCallbacks) {
+    const chevronLeft =
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>';
+    const chevronRight =
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>';
     this.root = document.createElement('div');
     this.root.className = 'annotation-overlay hidden';
 
@@ -33,8 +37,9 @@ export class AnnotationOverlay {
     this.nav.className = 'annotation-nav hidden';
     this.prevButton = document.createElement('button');
     this.prevButton.type = 'button';
-    this.prevButton.className = 'annotation-nav-btn';
-    this.prevButton.textContent = 'Prev';
+    this.prevButton.className = 'annotation-nav-btn annotation-nav-btn-icon';
+    this.prevButton.innerHTML = chevronLeft;
+    this.prevButton.setAttribute('aria-label', 'Previous annotation');
     this.prevButton.onclick = () => callbacks.onPrev();
     this.closeButton = document.createElement('button');
     this.closeButton.type = 'button';
@@ -43,8 +48,9 @@ export class AnnotationOverlay {
     this.closeButton.onclick = () => callbacks.onClose();
     this.nextButton = document.createElement('button');
     this.nextButton.type = 'button';
-    this.nextButton.className = 'annotation-nav-btn';
-    this.nextButton.textContent = 'Next';
+    this.nextButton.className = 'annotation-nav-btn annotation-nav-btn-icon';
+    this.nextButton.innerHTML = chevronRight;
+    this.nextButton.setAttribute('aria-label', 'Next annotation');
     this.nextButton.onclick = () => callbacks.onNext();
     this.nav.append(this.prevButton, this.closeButton, this.nextButton);
     this.root.appendChild(this.nav);
@@ -111,9 +117,10 @@ export class AnnotationOverlay {
       this.tooltip.style.top = `${Math.max(12, Math.min(height - 120, selectedPin.screenY + 16))}px`;
     }
 
-    const showNav = Boolean(model.selectedId && model.showNav);
+    const showNav = Boolean(model.showNav);
     this.nav.classList.toggle('hidden', !showNav);
     this.prevButton.disabled = !model.canPrev;
+    this.closeButton.disabled = !model.selectedId;
     this.nextButton.disabled = !model.canNext;
   }
 

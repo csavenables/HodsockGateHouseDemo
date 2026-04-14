@@ -106,13 +106,22 @@ export class AnnotationManager {
     const selectedIndex = this.selectedId
       ? orderedVisiblePins.findIndex((pin) => pin.id === this.selectedId)
       : -1;
+    const wrapNavigation = this.config.ui.wrapNavigation ?? true;
+    const hasAny = orderedVisiblePins.length > 0;
+    const hasMany = orderedVisiblePins.length > 1;
+    const canNavigateFromNone = selectedIndex < 0 && hasAny;
     const model: AnnotationOverlayModel = {
       pins: projectedPins,
       selectedId: this.selectedId,
       showTooltip: this.config.ui.showTooltip,
       showNav: this.config.ui.showNav,
-      canPrev: selectedIndex > 0,
-      canNext: selectedIndex >= 0 && selectedIndex < orderedVisiblePins.length - 1,
+      canPrev: canNavigateFromNone ? hasAny : wrapNavigation ? hasMany : selectedIndex > 0,
+      canNext:
+        canNavigateFromNone
+          ? hasAny
+          : wrapNavigation
+            ? hasMany
+            : selectedIndex >= 0 && selectedIndex < orderedVisiblePins.length - 1,
     };
     this.overlay.render(model);
   }
@@ -197,6 +206,35 @@ export class AnnotationManager {
     };
     this.syncConfigPins();
     this.emitEditorState();
+  }
+
+  captureSelectedCameraFromLivePose(): boolean {
+    if (!this.config || !this.selectedId) {
+      return false;
+    }
+    const index = this.pins.findIndex((pin) => pin.id === this.selectedId);
+    if (index < 0) {
+      return false;
+    }
+    const existing = this.pins[index];
+    const cameraTarget = new THREE.Vector3();
+    this.options.cameraController.getTarget(cameraTarget);
+    this.pins[index] = {
+      ...existing,
+      camera: {
+        ...existing.camera,
+        position: [
+          this.options.camera.position.x,
+          this.options.camera.position.y,
+          this.options.camera.position.z,
+        ],
+        target: [cameraTarget.x, cameraTarget.y, cameraTarget.z],
+        fov: this.options.camera.fov,
+      },
+    };
+    this.syncConfigPins();
+    this.emitEditorState();
+    return true;
   }
 
   nudgeSelected(axis: 'x' | 'y' | 'z', delta: number): void {
@@ -311,6 +349,11 @@ export class AnnotationManager {
     const samples: OcclusionSamplePoint[] = [];
     const projected: ProjectedAnnotationPin[] = [];
     const occlusionConfig = this.config!.ui.occlusion;
+    const declutterConfig = this.config!.ui.declutter ?? {
+      selectedOnlyStrong: true,
+      unselectedAlpha: 0.18,
+      maxVisibleUnselected: 6,
+    };
 
     for (const pin of this.pins) {
       if (pin.assetId && pin.assetId !== this.activeAssetId) {
@@ -353,37 +396,71 @@ export class AnnotationManager {
     return projected.map((pin) => {
       const occluded = pin.visible && Boolean(occludedById.get(pin.pin.id));
       const clickable = !occluded || !occlusionConfig.disableClickWhenOccluded;
+      const isSelected = pin.pin.id === this.selectedId;
+      let alpha = 1;
+      if (declutterConfig.selectedOnlyStrong && !isSelected) {
+        alpha = declutterConfig.unselectedAlpha;
+      }
+      if (occluded && !isSelected) {
+        alpha = Math.min(alpha, occlusionConfig.fadeAlpha);
+      }
       return {
         ...pin,
         occluded,
         clickable,
-        alpha: occluded ? occlusionConfig.fadeAlpha : 1,
+        alpha,
       };
     });
   }
 
   private selectPrev(): void {
-    if (!this.selectedId) {
-      return;
-    }
     const visiblePins = this.pins.filter((pin) => !pin.assetId || pin.assetId === this.activeAssetId);
-    const index = visiblePins.findIndex((pin) => pin.id === this.selectedId);
-    if (index <= 0) {
+    if (visiblePins.length === 0) {
       return;
     }
-    this.selectAnnotation(visiblePins[index - 1].id);
+    if (!this.selectedId) {
+      this.selectAnnotation(visiblePins[0].id);
+      return;
+    }
+    const index = visiblePins.findIndex((pin) => pin.id === this.selectedId);
+    if (index < 0) {
+      this.selectAnnotation(visiblePins[0].id);
+      return;
+    }
+    const nextIndex = index <= 0
+      ? (this.config?.ui.wrapNavigation ?? true)
+        ? visiblePins.length - 1
+        : 0
+      : index - 1;
+    if (nextIndex === index && !(this.config?.ui.wrapNavigation ?? true)) {
+      return;
+    }
+    this.selectAnnotation(visiblePins[nextIndex].id);
   }
 
   private selectNext(): void {
-    if (!this.selectedId) {
-      return;
-    }
     const visiblePins = this.pins.filter((pin) => !pin.assetId || pin.assetId === this.activeAssetId);
-    const index = visiblePins.findIndex((pin) => pin.id === this.selectedId);
-    if (index < 0 || index >= visiblePins.length - 1) {
+    if (visiblePins.length === 0) {
       return;
     }
-    this.selectAnnotation(visiblePins[index + 1].id);
+    if (!this.selectedId) {
+      this.selectAnnotation(visiblePins[0].id);
+      return;
+    }
+    const index = visiblePins.findIndex((pin) => pin.id === this.selectedId);
+    if (index < 0) {
+      this.selectAnnotation(visiblePins[0].id);
+      return;
+    }
+    const nextIndex = index >= visiblePins.length - 1
+      ? (this.config?.ui.wrapNavigation ?? true)
+        ? 0
+        : index
+      : index + 1;
+    if (nextIndex === index && !(this.config?.ui.wrapNavigation ?? true)) {
+      return;
+    }
+    this.selectAnnotation(visiblePins[nextIndex].id);
   }
 
   private close(): void {

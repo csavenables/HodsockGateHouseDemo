@@ -4,6 +4,7 @@ export interface RuntimeOptions {
   autorotateOverride: boolean | null;
   controlsVisible: boolean;
   replayButtonVisible: boolean;
+  annotate: boolean;
   parentOrigin: string | null;
 }
 
@@ -45,6 +46,7 @@ export function readRuntimeOptions(search: string, defaultSceneId = 'hodsock-gat
     autorotateOverride: parseBooleanFlag(params.get('autorotate')),
     controlsVisible,
     replayButtonVisible,
+    annotate: parseBooleanFlag(params.get('annotate')) ?? false,
     parentOrigin: parseOrigin(params.get('parentOrigin')),
   };
 }

@@ -5,7 +5,7 @@ import {
   AnnotationUpdatePatch,
 } from '../annotations/AnnotationManager';
 import { AnnotationPersistence } from '../annotations/AnnotationPersistence';
-import { InteriorViewConfig, RevealConfig, SceneConfig } from '../config/schema';
+import { BrandingLogoConfig, InteriorViewConfig, RevealConfig, SceneConfig } from '../config/schema';
 import { GaussianSplatRenderer } from '../renderers/GaussianSplatRenderer';
 import { InputBindings } from './InputBindings';
 import { CameraController } from './CameraController';
@@ -22,11 +22,13 @@ export interface ViewerUi {
   ): void;
   setSceneTitle(title: string): void;
   setSplatOptions(items: SplatToggleItem[], onSelect: (id: string) => void): void;
+  setBrandingLogo(logo: BrandingLogoConfig | null): void;
   configureAnnotationEditor(handlers: {
     onToggleEdit(enabled: boolean): void;
     onSelectPin(id: string): void;
     onAddPin(): void;
     onDeleteSelected(): void;
+    onCaptureCamera(): boolean;
     onUpdateSelected(patch: AnnotationUpdatePatch): void;
     onNudge(axis: 'x' | 'y' | 'z', delta: number): void;
     onSave(): void;
@@ -131,6 +133,7 @@ export class Viewer {
       onSelectPin: (id) => this.annotationManager.selectAnnotation(id),
       onAddPin: () => this.annotationManager.addPin(),
       onDeleteSelected: () => this.annotationManager.deleteSelected(),
+      onCaptureCamera: () => this.annotationManager.captureSelectedCameraFromLivePose(),
       onUpdateSelected: (patch) => this.annotationManager.updateSelected(patch),
       onNudge: (axis, delta) => this.annotationManager.nudgeSelected(axis, delta),
       onSave: () => {
@@ -275,6 +278,7 @@ export class Viewer {
     this.webglRenderer.setPixelRatio(Math.min(window.devicePixelRatio, maxDpr));
     this.syncViewport();
     this.currentIdleRotateSpeed = config.presentation.idleRotateSpeed;
+    this.ui.setBrandingLogo(config.branding.logo.enabled ? config.branding.logo : null);
     const defaultAutoRotate = this.autorotateOverride ?? (config.ui.autorotateDefaultOn && config.ui.enableAutorotate);
     this.autoRotate = defaultAutoRotate;
     this.cameraController.setAutoRotate(false, this.currentIdleRotateSpeed);

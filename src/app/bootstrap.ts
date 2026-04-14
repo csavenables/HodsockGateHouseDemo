@@ -1,4 +1,4 @@
-import { InteriorViewConfig, SceneConfig } from '../config/schema';
+import { BrandingLogoConfig, InteriorViewConfig, SceneConfig } from '../config/schema';
 import { AnnotationEditorState, AnnotationUpdatePatch } from '../annotations/AnnotationManager';
 import { createLoader, LoaderController } from '../ui/components/Loader';
 import { createToolbar, ToolbarController } from '../ui/components/Toolbar';
@@ -13,6 +13,7 @@ export interface AppShellOptions {
   embedMode?: boolean;
   controlsVisible?: boolean;
   replayButtonVisible?: boolean;
+  annotationAuthoring?: boolean;
   onReplay?: () => void;
 }
 
@@ -23,89 +24,90 @@ export function createAppShell(
 ): AppShell {
   const embedMode = options.embedMode ?? false;
   const controlsVisible = options.controlsVisible ?? !embedMode;
+  const annotationAuthoring = options.annotationAuthoring ?? false;
   const replayButtonVisible = options.replayButtonVisible ?? embedMode;
   container.innerHTML = `
-    <div class="app-shell${embedMode ? ' app-shell-embed' : ''}">
+    <div class="app-shell${embedMode ? ' app-shell-embed' : ''} entry-active">
       <header class="app-header${controlsVisible ? '' : ' hidden'}">
         <h1 class="app-title">3DGSViewerV1</h1>
         <p class="scene-title">Scene</p>
       </header>
       <main class="viewer-root">
         <section class="viewer-host" id="viewer-host"></section>
+        <div class="brand-logo hidden" data-branding-logo>
+          <img alt="" loading="eager" decoding="async" />
+        </div>
+        <div class="entry-overlay" data-entry-overlay>
+          <div class="entry-overlay-content">
+            <h2 class="entry-title">Explore Hodsock Priory before you visit</h2>
+            <p class="entry-subline">An interactive preview designed to give couples a true sense of the space</p>
+            <button type="button" class="entry-button" data-enter-experience>Enter Experience</button>
+          </div>
+        </div>
+        <button type="button" class="annotation-fab hidden" data-annotation-fab aria-label="Toggle annotation editor">
+          Annotations
+        </button>
         <div class="annotation-host" id="annotation-host"></div>
-        <aside class="splat-panel${controlsVisible ? '' : ' hidden'}" aria-label="Splat visibility controls">
-          <h2 class="splat-panel-title">Splats</h2>
-          <div class="splat-controls"></div>
-          <div class="annotation-editor hidden">
-            <h3 class="interior-title">Annotations</h3>
-            <label class="interior-row interior-check">
-              <input data-ann="editMode" type="checkbox" />
-              Edit Mode
-            </label>
-            <label class="interior-row">
-              Pin
-              <select data-ann="pinSelect"></select>
-            </label>
-            <div class="annotation-editor-actions">
-              <button type="button" class="splat-toggle" data-ann="add">Add</button>
-              <button type="button" class="splat-toggle" data-ann="delete">Delete</button>
-              <button type="button" class="splat-toggle" data-ann="save">Save</button>
-            </div>
-            <label class="interior-row">
-              Asset
-              <select data-ann="assetSelect"></select>
-            </label>
-            <label class="interior-row">
-              X
-              <input data-ann="x" type="number" step="0.01" />
-            </label>
-            <label class="interior-row">
-              Y
-              <input data-ann="y" type="number" step="0.01" />
-            </label>
-            <label class="interior-row">
-              Z
-              <input data-ann="z" type="number" step="0.01" />
-            </label>
-            <label class="interior-row">
-              Nudge
-              <input data-ann="step" type="number" step="0.005" value="0.01" />
-            </label>
-            <div class="annotation-editor-actions">
-              <button type="button" class="splat-toggle" data-ann="x-">X-</button>
-              <button type="button" class="splat-toggle" data-ann="x+">X+</button>
-              <button type="button" class="splat-toggle" data-ann="y-">Y-</button>
-              <button type="button" class="splat-toggle" data-ann="y+">Y+</button>
-              <button type="button" class="splat-toggle" data-ann="z-">Z-</button>
-              <button type="button" class="splat-toggle" data-ann="z+">Z+</button>
-            </div>
-            <label class="interior-row">
-              Title
-              <input data-ann="title" type="text" />
-            </label>
-            <label class="interior-row annotation-textarea-row">
-              Body
-              <textarea data-ann="body" rows="3"></textarea>
-            </label>
+        <aside class="annotation-editor hidden" aria-label="Annotation editor">
+          <h3 class="interior-title">Annotations</h3>
+          <p class="annotation-editor-status" data-ann="status"></p>
+          <label class="interior-row interior-check">
+            <input data-ann="editMode" type="checkbox" />
+            Edit Mode
+          </label>
+          <label class="interior-row">
+            Pin
+            <select data-ann="pinSelect"></select>
+          </label>
+          <div class="annotation-editor-actions annotation-editor-actions-primary">
+            <button type="button" class="splat-toggle" data-ann="add">Add</button>
+            <button type="button" class="splat-toggle" data-ann="delete">Delete</button>
+            <button type="button" class="splat-toggle" data-ann="captureCamera">Capture Camera</button>
+            <button type="button" class="splat-toggle" data-ann="save">Save</button>
           </div>
-          <div class="interior-debug">
-            <h3 class="interior-title">Interior Debug</h3>
-            <label class="interior-row">Radius <input data-key="radius" type="range" min="0.2" max="20" step="0.05" /></label>
-            <label class="interior-row">Softness <input data-key="softness" type="range" min="0.05" max="0.6" step="0.01" /></label>
-            <label class="interior-row">Fade Alpha <input data-key="fadeAlpha" type="range" min="0" max="1" step="0.01" /></label>
-            <label class="interior-row">Max Dist <input data-key="maxDistance" type="range" min="1" max="100" step="1" /></label>
-            <label class="interior-row">Target X <input data-key="targetX" type="range" min="-10" max="10" step="0.05" /></label>
-            <label class="interior-row">Target Y <input data-key="targetY" type="range" min="-10" max="10" step="0.05" /></label>
-            <label class="interior-row">Target Z <input data-key="targetZ" type="range" min="-10" max="10" step="0.05" /></label>
-            <label class="interior-row interior-check">
-              <input data-key="enabled" type="checkbox" />
-              Enabled
-            </label>
+          <label class="interior-row">
+            Asset
+            <select data-ann="assetSelect"></select>
+          </label>
+          <label class="interior-row">
+            X
+            <input data-ann="x" type="number" step="0.01" />
+          </label>
+          <label class="interior-row">
+            Y
+            <input data-ann="y" type="number" step="0.01" />
+          </label>
+          <label class="interior-row">
+            Z
+            <input data-ann="z" type="number" step="0.01" />
+          </label>
+          <label class="interior-row">
+            Nudge
+            <input data-ann="step" type="number" step="0.005" value="0.01" />
+          </label>
+          <div class="annotation-editor-actions">
+            <button type="button" class="splat-toggle" data-ann="x-">X-</button>
+            <button type="button" class="splat-toggle" data-ann="x+">X+</button>
+            <button type="button" class="splat-toggle" data-ann="y-">Y-</button>
+            <button type="button" class="splat-toggle" data-ann="y+">Y+</button>
+            <button type="button" class="splat-toggle" data-ann="z-">Z-</button>
+            <button type="button" class="splat-toggle" data-ann="z+">Z+</button>
           </div>
+          <label class="interior-row">
+            Title
+            <input data-ann="title" type="text" />
+          </label>
+          <label class="interior-row annotation-textarea-row">
+            Body
+            <textarea data-ann="body" rows="3"></textarea>
+          </label>
         </aside>
         <div class="transition-overlay"></div>
         <button type="button" class="replay-button${replayButtonVisible ? '' : ' hidden'}" aria-label="Replay intro">
           Replay
+        </button>
+        <button type="button" class="fullscreen-fab hidden" data-fullscreen-fab aria-label="Toggle fullscreen">
+          Fullscreen
         </button>
       </main>
       <div class="error-panel hidden" role="alert">
@@ -118,30 +120,40 @@ export function createAppShell(
     </div>
   `;
 
+  const appShell = container.querySelector<HTMLElement>('.app-shell');
   const viewerHost = container.querySelector<HTMLElement>('#viewer-host');
   const overlay = container.querySelector<HTMLElement>('.transition-overlay');
   const annotationHost = container.querySelector<HTMLElement>('#annotation-host');
+  const entryOverlay = container.querySelector<HTMLElement>('[data-entry-overlay]');
+  const enterExperienceButton = container.querySelector<HTMLButtonElement>('[data-enter-experience]');
+  const annotationFab = container.querySelector<HTMLButtonElement>('[data-annotation-fab]');
+  const fullscreenFab = container.querySelector<HTMLButtonElement>('[data-fullscreen-fab]');
+  const brandingLogo = container.querySelector<HTMLElement>('[data-branding-logo]');
+  const brandingLogoImage = brandingLogo?.querySelector<HTMLImageElement>('img') ?? null;
   const errorPanel = container.querySelector<HTMLElement>('.error-panel');
   const errorTitle = container.querySelector<HTMLElement>('.error-title');
   const errorDetails = container.querySelector<HTMLElement>('.error-details');
   const sceneTitle = container.querySelector<HTMLElement>('.scene-title');
   const footer = container.querySelector<HTMLElement>('.app-footer');
-  const splatControls = container.querySelector<HTMLElement>('.splat-controls');
-  const interiorDebug = container.querySelector<HTMLElement>('.interior-debug');
   const annotationEditor = container.querySelector<HTMLElement>('.annotation-editor');
   const replayButton = container.querySelector<HTMLButtonElement>('.replay-button');
 
   if (
+    !appShell ||
     !viewerHost ||
     !overlay ||
     !annotationHost ||
+    !entryOverlay ||
+    !enterExperienceButton ||
+    !annotationFab ||
+    !fullscreenFab ||
+    !brandingLogo ||
+    !brandingLogoImage ||
     !errorPanel ||
     !errorTitle ||
     !errorDetails ||
     !sceneTitle ||
     !footer ||
-    !splatControls ||
-    !interiorDebug ||
     !annotationEditor ||
     !replayButton
   ) {
@@ -151,6 +163,55 @@ export function createAppShell(
   const loader: LoaderController = createLoader(viewerHost);
   const toolbar = createToolbar(footer, actions);
   replayButton.onclick = () => options.onReplay?.();
+  const syncFullscreenFab = (): void => {
+    const enabled = actions.isFullscreen();
+    fullscreenFab.classList.toggle('active', enabled);
+    fullscreenFab.textContent = enabled ? 'Exit Fullscreen' : 'Fullscreen';
+  };
+  fullscreenFab.onclick = () => {
+    const enable = !actions.isFullscreen();
+    actions.onToggleFullscreen(enable);
+    syncFullscreenFab();
+  };
+  document.addEventListener('fullscreenchange', syncFullscreenFab);
+  let annotationPanelOpen = true;
+  let latestAnnotationState: AnnotationEditorState | null = null;
+  const syncAnnotationFab = (): void => {
+    annotationFab.classList.toggle('active', annotationPanelOpen);
+    annotationFab.textContent = annotationPanelOpen ? 'Annotations -' : 'Annotations +';
+  };
+  const syncAnnotationEditorVisibility = (): void => {
+    const available = latestAnnotationState?.available ?? false;
+    annotationEditor.classList.toggle('hidden', !annotationAuthoring || !available || !annotationPanelOpen);
+    syncAnnotationFab();
+  };
+  annotationFab.onclick = () => {
+    annotationPanelOpen = !annotationPanelOpen;
+    syncAnnotationEditorVisibility();
+  };
+  enterExperienceButton.onclick = () => {
+    if (!appShell.classList.contains('entry-active')) {
+      return;
+    }
+    entryOverlay.classList.add('is-dismissed');
+    window.setTimeout(() => {
+      appShell.classList.remove('entry-active');
+      entryOverlay.classList.add('hidden');
+    }, 520);
+  };
+  const setBrandingLogo = (logo: BrandingLogoConfig | null): void => {
+    if (!logo || !logo.enabled || !logo.src) {
+      brandingLogo.classList.add('hidden');
+      brandingLogo.removeAttribute('data-position');
+      brandingLogoImage.removeAttribute('src');
+      brandingLogoImage.alt = '';
+      return;
+    }
+    brandingLogo.dataset.position = logo.position;
+    brandingLogoImage.src = logo.src;
+    brandingLogoImage.alt = logo.alt;
+    brandingLogo.classList.remove('hidden');
+  };
   const getAnnInput = (key: string): HTMLInputElement | null =>
     annotationEditor.querySelector<HTMLInputElement>(`[data-ann="${key}"]`);
   const getAnnSelect = (key: string): HTMLSelectElement | null =>
@@ -160,6 +221,7 @@ export function createAppShell(
   const annEditMode = getAnnInput('editMode');
   const annPinSelect = getAnnSelect('pinSelect');
   const annAssetSelect = getAnnSelect('assetSelect');
+  const annStatus = annotationEditor.querySelector<HTMLElement>('[data-ann="status"]');
   const annX = getAnnInput('x');
   const annY = getAnnInput('y');
   const annZ = getAnnInput('z');
@@ -168,6 +230,7 @@ export function createAppShell(
   const annBody = annotationEditor.querySelector<HTMLTextAreaElement>('textarea[data-ann="body"]');
   const annAdd = getAnnButton('add');
   const annDelete = getAnnButton('delete');
+  const annCaptureCamera = getAnnButton('captureCamera');
   const annSave = getAnnButton('save');
   const annXMinus = getAnnButton('x-');
   const annXPlus = getAnnButton('x+');
@@ -180,6 +243,7 @@ export function createAppShell(
     onSelectPin(id: string): void;
     onAddPin(): void;
     onDeleteSelected(): void;
+    onCaptureCamera(): boolean;
     onUpdateSelected(patch: AnnotationUpdatePatch): void;
     onNudge(axis: 'x' | 'y' | 'z', delta: number): void;
     onSave(): void;
@@ -210,46 +274,20 @@ export function createAppShell(
       if (controlsVisible) {
         toolbar.setConfig(config);
       }
+      annotationFab.classList.toggle('hidden', !annotationAuthoring || !config.annotations.enabled);
+      fullscreenFab.classList.toggle('hidden', !config.ui.enableFullscreen);
+      if (!config.annotations.enabled) {
+        annotationPanelOpen = false;
+      }
+      syncAnnotationEditorVisibility();
+      syncFullscreenFab();
     },
     configureInteriorDebug(
       config: InteriorViewConfig,
       onChange: (patch: Partial<InteriorViewConfig>) => void,
     ): void {
-      const getInput = (key: string): HTMLInputElement | null =>
-        interiorDebug.querySelector<HTMLInputElement>(`input[data-key="${key}"]`);
-      const radius = getInput('radius');
-      const softness = getInput('softness');
-      const fadeAlpha = getInput('fadeAlpha');
-      const maxDistance = getInput('maxDistance');
-      const targetX = getInput('targetX');
-      const targetY = getInput('targetY');
-      const targetZ = getInput('targetZ');
-      const enabled = getInput('enabled');
-      if (!radius || !softness || !fadeAlpha || !maxDistance || !targetX || !targetY || !targetZ || !enabled) {
-        return;
-      }
-      radius.value = String(config.radius);
-      softness.value = String(config.softness);
-      fadeAlpha.value = String(config.fadeAlpha);
-      maxDistance.value = String(config.maxDistance);
-      targetX.value = String(config.target[0]);
-      targetY.value = String(config.target[1]);
-      targetZ.value = String(config.target[2]);
-      enabled.checked = config.enabled;
-
-      const emitTarget = (): void => {
-        onChange({
-          target: [Number(targetX.value), Number(targetY.value), Number(targetZ.value)],
-        });
-      };
-      radius.oninput = () => onChange({ radius: Number(radius.value) });
-      softness.oninput = () => onChange({ softness: Number(softness.value) });
-      fadeAlpha.oninput = () => onChange({ fadeAlpha: Number(fadeAlpha.value) });
-      maxDistance.oninput = () => onChange({ maxDistance: Number(maxDistance.value) });
-      targetX.oninput = emitTarget;
-      targetY.oninput = emitTarget;
-      targetZ.oninput = emitTarget;
-      enabled.onchange = () => onChange({ enabled: enabled.checked });
+      void config;
+      void onChange;
     },
     setSceneTitle(title: string): void {
       sceneTitle.textContent = title;
@@ -258,36 +296,8 @@ export function createAppShell(
       items: SplatToggleItem[],
       onSelect: (id: string) => void,
     ): void {
-      if (!controlsVisible) {
-        splatControls.innerHTML = '';
-        return;
-      }
-      const staircaseActive = items.some((item) => item.id === 'staircase' && item.active);
-      interiorDebug.classList.toggle('hidden', !staircaseActive);
-      splatControls.innerHTML = '';
-      for (const item of items) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'splat-toggle';
-        button.dataset.splatId = item.id;
-        button.dataset.active = item.active ? 'true' : 'false';
-        button.dataset.loaded = item.loaded ? 'true' : 'false';
-        button.textContent = item.label;
-        button.classList.toggle('active', item.active);
-        button.classList.toggle('failed', item.failed);
-        button.disabled = !item.loaded || item.failed;
-        button.onclick = () => {
-          if (button.disabled) {
-            return;
-          }
-          for (const other of splatControls.querySelectorAll<HTMLButtonElement>('button.splat-toggle')) {
-            other.classList.remove('active');
-          }
-          button.classList.add('active');
-          onSelect(item.id);
-        };
-        splatControls.appendChild(button);
-      }
+      void items;
+      void onSelect;
     },
     configureAnnotationEditor(handlers): void {
       annotationHandlers = handlers;
@@ -295,6 +305,7 @@ export function createAppShell(
         !annEditMode ||
         !annPinSelect ||
         !annAssetSelect ||
+        !annStatus ||
         !annX ||
         !annY ||
         !annZ ||
@@ -303,6 +314,7 @@ export function createAppShell(
         !annBody ||
         !annAdd ||
         !annDelete ||
+        !annCaptureCamera ||
         !annSave ||
         !annXMinus ||
         !annXPlus ||
@@ -313,11 +325,21 @@ export function createAppShell(
       ) {
         return;
       }
+      const annStatusEl = annStatus!;
       annEditMode.onchange = () => annotationHandlers?.onToggleEdit(annEditMode.checked);
       annPinSelect.onchange = () => annotationHandlers?.onSelectPin(annPinSelect.value);
       annAdd.onclick = () => annotationHandlers?.onAddPin();
       annDelete.onclick = () => annotationHandlers?.onDeleteSelected();
-      annSave.onclick = () => annotationHandlers?.onSave();
+      annCaptureCamera.onclick = () => {
+        const captured = annotationHandlers?.onCaptureCamera() ?? false;
+        if (captured) {
+          annStatusEl.textContent = 'Captured camera (not saved yet)';
+        }
+      };
+      annSave.onclick = () => {
+        annotationHandlers?.onSave();
+        annStatusEl.textContent = 'Saved annotations';
+      };
       const emitPos = (): void => {
         annotationHandlers?.onUpdateSelected({
           pos: [Number(annX.value), Number(annY.value), Number(annZ.value)],
@@ -341,11 +363,11 @@ export function createAppShell(
       annZPlus.onclick = () => annotationHandlers?.onNudge('z', nudgeValue());
     },
     setAnnotationEditorState(state: AnnotationEditorState): void {
-      if (!controlsVisible) {
-        annotationEditor.classList.add('hidden');
-        return;
+      latestAnnotationState = state;
+      if (!annotationAuthoring) {
+        annotationPanelOpen = false;
       }
-      annotationEditor.classList.toggle('hidden', !state.available);
+      syncAnnotationEditorVisibility();
       if (
         !annEditMode ||
         !annPinSelect ||
@@ -359,7 +381,9 @@ export function createAppShell(
       ) {
         return;
       }
+      const annStatusEl = annStatus!;
       annEditMode.checked = state.editMode;
+      annStatusEl.textContent = state.available ? 'Ready to edit annotations' : '';
       annPinSelect.innerHTML = '';
       for (const pin of state.pins) {
         const option = document.createElement('option');
@@ -398,6 +422,9 @@ export function createAppShell(
       annTitle.disabled = readonly;
       annBody.disabled = readonly;
       annAssetSelect.disabled = readonly;
+    },
+    setBrandingLogo(logo: BrandingLogoConfig | null): void {
+      setBrandingLogo(logo);
     },
     getOverlayElement(): HTMLElement {
       return overlay;

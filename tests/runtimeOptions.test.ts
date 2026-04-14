@@ -9,15 +9,17 @@ describe('readRuntimeOptions', () => {
     expect(options.autorotateOverride).toBeNull();
     expect(options.controlsVisible).toBe(false);
     expect(options.replayButtonVisible).toBe(false);
+    expect(options.annotate).toBe(false);
   });
 
   it('parses embed and autorotate flags', () => {
-    const options = readRuntimeOptions('?scene=demo&embed=1&autorotate=0&controls=1&replayButton=1');
+    const options = readRuntimeOptions('?scene=demo&embed=1&autorotate=0&controls=1&replayButton=1&annotate=1');
     expect(options.sceneId).toBe('demo');
     expect(options.embed).toBe(true);
     expect(options.autorotateOverride).toBe(false);
     expect(options.controlsVisible).toBe(true);
     expect(options.replayButtonVisible).toBe(true);
+    expect(options.annotate).toBe(true);
   });
 
   it('normalizes parentOrigin', () => {

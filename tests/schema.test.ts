@@ -65,6 +65,12 @@ describe('validateSceneConfig', () => {
       expect(result.data.interiorView.radius).toBe(0.45);
       expect(result.data.annotations.enabled).toBe(false);
       expect(result.data.annotations.pins).toHaveLength(0);
+      expect(result.data.annotations.ui.wrapNavigation).toBe(true);
+      expect(result.data.annotations.ui.declutter.selectedOnlyStrong).toBe(true);
+      expect(result.data.annotations.ui.declutter.unselectedAlpha).toBe(0.18);
+      expect(result.data.annotations.ui.declutter.maxVisibleUnselected).toBe(6);
+      expect(result.data.branding.logo.enabled).toBe(false);
+      expect(result.data.branding.logo.position).toBe('top-left');
     }
   });
 
@@ -729,6 +735,110 @@ describe('validateSceneConfig', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.errors.join(' ')).toContain('defaultSelectedId');
+    }
+  });
+
+  it('rejects enabled branding logo without source', () => {
+    const invalid = {
+      id: 'demo',
+      title: 'Demo',
+      assets: [
+        {
+          id: 'a',
+          src: '/x.ply',
+          transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+          visibleDefault: true,
+        },
+      ],
+      camera: {
+        home: { position: [0, 0, 2], target: [0, 0, 0], fov: 50 },
+        limits: { minDistance: 0.4, maxDistance: 4, minPolarAngle: 0.1, maxPolarAngle: 2.9 },
+        transitionMs: 500,
+      },
+      ui: {
+        enableFullscreen: true,
+        enableAutorotate: true,
+        enableReset: true,
+        enablePan: true,
+        autorotateDefaultOn: false,
+      },
+      transitions: {
+        sceneFadeMs: 300,
+      },
+      branding: {
+        logo: {
+          enabled: true,
+          src: '',
+          alt: 'Brand',
+          position: 'top-left',
+        },
+      },
+    };
+
+    const result = validateSceneConfig(invalid);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.join(' ')).toContain('branding.logo.src');
+    }
+  });
+
+  it('rejects invalid annotations declutter values', () => {
+    const invalid = {
+      id: 'demo',
+      title: 'Demo',
+      assets: [
+        {
+          id: 'a',
+          src: '/x.ply',
+          transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+          visibleDefault: true,
+        },
+      ],
+      camera: {
+        home: { position: [0, 0, 2], target: [0, 0, 0], fov: 50 },
+        limits: { minDistance: 0.4, maxDistance: 4, minPolarAngle: 0.1, maxPolarAngle: 2.9 },
+        transitionMs: 500,
+      },
+      ui: {
+        enableFullscreen: true,
+        enableAutorotate: true,
+        enableReset: true,
+        enablePan: true,
+        autorotateDefaultOn: false,
+      },
+      transitions: {
+        sceneFadeMs: 300,
+      },
+      annotations: {
+        enabled: true,
+        defaultSelectedId: null,
+        pins: [],
+        ui: {
+          showTooltip: true,
+          showNav: true,
+          wrapNavigation: true,
+          pinStyle: 'numbered',
+          declutter: {
+            selectedOnlyStrong: true,
+            unselectedAlpha: 1.2,
+            maxVisibleUnselected: -1,
+          },
+          occlusion: {
+            enabled: true,
+            mode: 'depth',
+            fadeAlpha: 0.2,
+            disableClickWhenOccluded: true,
+            epsilon: 0.01,
+          },
+        },
+      },
+    };
+
+    const result = validateSceneConfig(invalid);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.join(' ')).toContain('annotations.ui.declutter.unselectedAlpha');
+      expect(result.errors.join(' ')).toContain('annotations.ui.declutter.maxVisibleUnselected');
     }
   });
 });

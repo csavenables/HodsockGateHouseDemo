@@ -1,0 +1,119 @@
+{
+  "annotations": {
+    "enabled": true,
+    "defaultSelectedId": null,
+    "pins": [
+      {
+        "id": "pin_1",
+        "order": 1,
+        "pos": [
+          2,
+          0.9033,
+          0.2264
+        ],
+        "title": "Annotation 1",
+        "body": "Edit this description.",
+        "assetId": "gatehouse_main",
+        "camera": {
+          "position": [
+            2.7440778411997337,
+            1.6570247475840576,
+            3.89213087910352
+          ],
+          "target": [
+            1.9999999999999993,
+            0.9032999999999999,
+            0.22639999999999993
+          ],
+          "fov": 52,
+          "transitionMs": 700,
+          "lockControls": true,
+          "orbitLimits": {
+            "minDistance": 1.2,
+            "maxDistance": 14,
+            "minPolarAngle": 0.25,
+            "maxPolarAngle": 1.52
+          }
+        }
+      },
+      {
+        "id": "pin_2",
+        "order": 2,
+        "pos": [
+          0.21693057305475547,
+          0.9064234140299424,
+          0.14496809066219463
+        ],
+        "title": "Annotation 2",
+        "body": "Edit this description.",
+        "assetId": "gatehouse_main",
+        "camera": {
+          "position": [
+            -0.7133293986158998,
+            0.9532940111680746,
+            1.6941415256540995
+          ],
+          "target": [
+            0.06000000000000005,
+            0.86,
+            0.029999999999999995
+          ],
+          "fov": 52,
+          "transitionMs": 700,
+          "lockControls": true,
+          "orbitLimits": {
+            "minDistance": 1.2,
+            "maxDistance": 14,
+            "minPolarAngle": 0.25,
+            "maxPolarAngle": 1.52
+          }
+        }
+      },
+      {
+        "id": "pin_3",
+        "order": 3,
+        "pos": [
+          -0.005748977403832747,
+          0.8701548969867158,
+          0.2186105777456277
+        ],
+        "title": "Annotation 3",
+        "body": "Edit this description.",
+        "assetId": "gatehouse_main",
+        "camera": {
+          "position": [
+            -2.72042014757718,
+            1.871327820990515,
+            2.362839029085098
+          ],
+          "target": [
+            0.06000000000000005,
+            0.86,
+            0.029999999999999995
+          ],
+          "fov": 52,
+          "transitionMs": 700,
+          "lockControls": true,
+          "orbitLimits": {
+            "minDistance": 1.2,
+            "maxDistance": 14,
+            "minPolarAngle": 0.25,
+            "maxPolarAngle": 1.52
+          }
+        }
+      }
+    ],
+    "ui": {
+      "showTooltip": false,
+      "showNav": false,
+      "pinStyle": "numbered",
+      "occlusion": {
+        "enabled": true,
+        "mode": "depth",
+        "fadeAlpha": 0.2,
+        "disableClickWhenOccluded": true,
+        "epsilon": 0.01
+      }
+    }
+  }
+}

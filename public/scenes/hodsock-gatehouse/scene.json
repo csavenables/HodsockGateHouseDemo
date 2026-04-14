@@ -120,13 +120,19 @@
     "affectSize": false
   },
   "annotations": {
-    "enabled": false,
+    "enabled": true,
     "defaultSelectedId": null,
     "pins": [],
     "ui": {
-      "showTooltip": false,
-      "showNav": false,
+      "showTooltip": true,
+      "showNav": true,
+      "wrapNavigation": true,
       "pinStyle": "numbered",
+      "declutter": {
+        "selectedOnlyStrong": true,
+        "unselectedAlpha": 0.1,
+        "maxVisibleUnselected": 6
+      },
       "occlusion": {
         "enabled": true,
         "mode": "depth",
@@ -134,6 +140,14 @@
         "disableClickWhenOccluded": true,
         "epsilon": 0.01
       }
+    }
+  },
+  "branding": {
+    "logo": {
+      "enabled": false,
+      "src": "",
+      "alt": "Hodsock Priory",
+      "position": "top-left"
     }
   }
 }
