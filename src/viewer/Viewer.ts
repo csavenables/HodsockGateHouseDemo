@@ -647,9 +647,22 @@ export class Viewer {
     this.cameraController.cancelAnimation();
     this.cameraController.setAutoRotate(false, this.currentIdleRotateSpeed);
     const home = this.fittedHome ?? this.activeConfig.camera.home;
-    this.cameraController.resetToHome(home, 900);
+    const closeReturnDurationMs = 1800;
+    const closeReturnYawOffsetDeg = 30;
+    const target = new THREE.Vector3(...home.target);
+    const position = new THREE.Vector3(...home.position);
+    const offset = position.sub(target).applyAxisAngle(
+      new THREE.Vector3(0, 1, 0),
+      THREE.MathUtils.degToRad(closeReturnYawOffsetDeg),
+    );
+    const adjustedHome = {
+      position: [target.x + offset.x, target.y + offset.y, target.z + offset.z] as [number, number, number],
+      target: home.target,
+      fov: home.fov,
+    };
+    this.cameraController.resetToHome(adjustedHome, closeReturnDurationMs);
     if (this.autoRotate) {
-      this.scheduleIdleResume(920);
+      this.scheduleIdleResume(closeReturnDurationMs + 20);
     }
   }
 }

@@ -11,6 +11,9 @@ export class AnnotationOverlay {
   private readonly closeButton: HTMLButtonElement;
   private readonly nextButton: HTMLButtonElement;
   private readonly pinElements = new Map<string, HTMLButtonElement>();
+  private stagedNavStep = 0;
+  private firstPinId: string | null = null;
+  private fallbackVisiblePinId: string | null = null;
 
   constructor(host: HTMLElement, callbacks: AnnotationOverlayCallbacks) {
     const chevronLeft =
@@ -51,7 +54,12 @@ export class AnnotationOverlay {
     this.nextButton.className = 'annotation-nav-btn annotation-nav-btn-icon';
     this.nextButton.innerHTML = chevronRight;
     this.nextButton.setAttribute('aria-label', 'Next annotation');
-    this.nextButton.onclick = () => callbacks.onNext();
+    this.nextButton.onclick = () => {
+      callbacks.onNext();
+      if (this.stagedNavStep < 2) {
+        this.stagedNavStep = 2;
+      }
+    };
     this.nav.append(this.prevButton, this.closeButton, this.nextButton);
     this.root.appendChild(this.nav);
 
@@ -68,14 +76,32 @@ export class AnnotationOverlay {
         return;
       }
       callbacks.onSelect(pinId);
+      if (this.stagedNavStep === 0 && this.firstPinId && pinId === this.firstPinId) {
+        this.stagedNavStep = 1;
+      }
     });
   }
 
   setVisible(visible: boolean): void {
     this.root.classList.toggle('hidden', !visible);
+    if (!visible) {
+      this.stagedNavStep = 0;
+      this.firstPinId = null;
+      this.fallbackVisiblePinId = null;
+      for (const element of this.pinElements.values()) {
+        delete element.dataset.introPlayed;
+        element.classList.remove('is-stage-intro');
+      }
+    }
   }
 
   render(model: AnnotationOverlayModel): void {
+    const orderedPins = [...model.pins].sort((a, b) => a.pin.order - b.pin.order);
+    const orderedVisiblePins = orderedPins.filter((pin) => pin.visible);
+    const explicitFirst = orderedPins.find((pin) => pin.pin.order === 1);
+    this.firstPinId = explicitFirst?.pin.id ?? orderedPins[0]?.pin.id ?? null;
+    this.fallbackVisiblePinId = orderedVisiblePins[0]?.pin.id ?? null;
+
     for (const pin of model.pins) {
       let element = this.pinElements.get(pin.pin.id);
       if (!element) {
@@ -89,11 +115,41 @@ export class AnnotationOverlay {
       element.textContent = String(pin.pin.order);
       element.style.left = `${pin.screenX}px`;
       element.style.top = `${pin.screenY}px`;
-      element.style.opacity = `${pin.alpha}`;
       element.dataset.clickable = pin.clickable ? 'true' : 'false';
       element.classList.toggle('is-selected', model.selectedId === pin.pin.id);
       element.classList.toggle('is-occluded', pin.occluded);
-      element.classList.toggle('hidden', !pin.visible);
+      const stageZeroVisibleId = (() => {
+        if (!this.firstPinId) {
+          return this.fallbackVisiblePinId;
+        }
+        const firstProjected = model.pins.find((entry) => entry.pin.id === this.firstPinId);
+        if (firstProjected?.visible) {
+          return this.firstPinId;
+        }
+        return this.fallbackVisiblePinId;
+      })();
+      const shouldShowPin = this.stagedNavStep === 0
+        ? pin.visible && pin.pin.id === stageZeroVisibleId
+        : pin.visible;
+      element.classList.toggle('hidden', !shouldShowPin);
+      const isStageIntroPin = this.stagedNavStep === 0 && pin.pin.id === stageZeroVisibleId && shouldShowPin;
+      if (!isStageIntroPin) {
+        delete element.dataset.introPlayed;
+      }
+      element.classList.toggle('is-stage-intro', isStageIntroPin);
+      const targetOpacity = isStageIntroPin ? 1 : pin.alpha;
+      if (isStageIntroPin && element.dataset.introPlayed !== 'true') {
+        element.dataset.introPlayed = 'true';
+        element.style.opacity = '0';
+        requestAnimationFrame(() => {
+          if (!element.isConnected || element.classList.contains('hidden')) {
+            return;
+          }
+          element.style.opacity = `${targetOpacity}`;
+        });
+      } else {
+        element.style.opacity = `${targetOpacity}`;
+      }
       element.disabled = !pin.clickable;
       element.setAttribute('aria-label', `${pin.pin.order}. ${pin.pin.title}`);
     }
@@ -117,11 +173,18 @@ export class AnnotationOverlay {
       this.tooltip.style.top = `${Math.max(12, Math.min(height - 120, selectedPin.screenY + 16))}px`;
     }
 
-    const showNav = Boolean(model.showNav);
+    const showNav = Boolean(model.showNav && this.stagedNavStep > 0);
+    const showPrev = this.stagedNavStep >= 2;
+    const showClose = this.stagedNavStep >= 2;
+    const showNext = this.stagedNavStep >= 1;
     this.nav.classList.toggle('hidden', !showNav);
-    this.prevButton.disabled = !model.canPrev;
-    this.closeButton.disabled = !model.selectedId;
-    this.nextButton.disabled = !model.canNext;
+    this.nav.dataset.step = String(this.stagedNavStep);
+    this.prevButton.classList.toggle('hidden', !showPrev);
+    this.closeButton.classList.toggle('hidden', !showClose);
+    this.nextButton.classList.toggle('hidden', !showNext);
+    this.prevButton.disabled = !showPrev || !model.canPrev;
+    this.closeButton.disabled = !showClose || !model.selectedId;
+    this.nextButton.disabled = !showNext || !model.canNext;
   }
 
   dispose(): void {

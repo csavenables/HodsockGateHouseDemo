@@ -74,8 +74,8 @@ export function createAppShell(
         <div class="entry-overlay" data-entry-overlay>
           <div class="entry-overlay-content">
             <h2 class="entry-title">
-              <span class="entry-title-desktop">Explore Hodsock<br />Priory Before<br />You Visit</span>
-              <span class="entry-title-mobile">Explore Hodsock Priory before you visit</span>
+              <span class="entry-title-desktop">Explore<br />Hodsock Priory<br />Before You Visit</span>
+              <span class="entry-title-mobile">Explore<br />Hodsock Priory<br />Before You Visit</span>
             </h2>
             <p class="entry-subline">An interactive preview designed to give couples a true sense of the space</p>
             <button type="button" class="entry-button" data-enter-experience>Enter Experience</button>

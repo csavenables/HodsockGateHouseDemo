@@ -250,7 +250,7 @@ body,
 }
 
 .entry-overlay-content {
-  width: min(780px, calc(100vw - 48px));
+  width: min(980px, calc(100vw - 48px));
   text-align: center;
   color: #fff;
   display: grid;
@@ -311,7 +311,7 @@ body,
   --entry-load-progress: 0deg;
   position: absolute;
   left: 50%;
-  top: calc(100% - 1.75rem);
+  top: calc(100% - 1.35rem);
   transform: translateX(-50%) scale(0.95);
   width: 34px;
   height: 34px;
@@ -498,6 +498,10 @@ body,
   transform: scale(1.06);
 }
 
+.annotation-pin.is-stage-intro {
+  animation: annotation-pin-intro 320ms ease-out;
+}
+
 .annotation-pin.is-selected {
   border-color: var(--pin-selected-border);
   background: var(--pin-selected-bg);
@@ -547,6 +551,10 @@ body,
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.5rem;
   pointer-events: auto;
+}
+
+.annotation-nav[data-step='1'] .annotation-nav-btn-icon:not(.hidden) {
+  grid-column: 2;
 }
 
 .annotation-nav-btn {
@@ -956,6 +964,15 @@ body,
   }
 }
 
+@keyframes annotation-pin-intro {
+  0% {
+    transform: scale(0.82);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
 @media (max-width: 768px) {
   .app-header,
   .app-footer {
@@ -1031,7 +1048,7 @@ body,
   .entry-load-ring {
     width: 30px;
     height: 30px;
-    top: calc(100% - 1.6rem);
+    top: calc(100% - 1.2rem);
   }
 
   .entry-load-ring-inner {
@@ -1045,7 +1062,8 @@ body,
 
 @media (min-width: 1024px) {
   .entry-title-desktop {
-    display: inline;
+    display: inline-block;
+    white-space: nowrap;
   }
 
   .entry-title-mobile {
