@@ -20,6 +20,7 @@ import {
 
 const RUNTIME_SUPPORTED_EXTENSIONS = ['.sog', 'lod-meta.json'] as const;
 const EPSILON = 0.00001;
+const DEFAULT_BOOT_BACKGROUND = '#ffffff';
 
 const DEFAULT_SOG_RUNTIME: SogRuntimeConfig = {
   unified: true,
@@ -206,7 +207,7 @@ export class GaussianSplatRenderer implements SplatRenderer {
     this.canvas.style.height = '100%';
     this.canvas.style.display = 'block';
     this.canvas.style.pointerEvents = 'none';
-    this.canvas.style.backgroundColor = '#000000';
+    this.canvas.style.backgroundColor = DEFAULT_BOOT_BACKGROUND;
     this.canvas.style.zIndex = '2';
 
     context.rootElement.style.position = 'relative';
@@ -228,8 +229,9 @@ export class GaussianSplatRenderer implements SplatRenderer {
     app.autoRender = false;
 
     const cameraEntity = new pc.Entity('pc-camera');
+    const bootBackground = new THREE.Color(DEFAULT_BOOT_BACKGROUND);
     cameraEntity.addComponent('camera', {
-      clearColor: new pc.Color(0, 0, 0, 1),
+      clearColor: new pc.Color(bootBackground.r, bootBackground.g, bootBackground.b, 1),
       fov: context.camera.fov,
       nearClip: context.camera.near,
       farClip: context.camera.far,

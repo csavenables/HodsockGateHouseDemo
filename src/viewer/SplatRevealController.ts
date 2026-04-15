@@ -130,7 +130,8 @@ export class SplatRevealController {
       maxRadius,
       Math.max(minRadius * 1.2, coverageRadius + Math.max(0.0001, config.bottomSphere.feather) * 1.15),
     );
-    const initialProgress = reverse ? 1 : 0;
+    const revealStartProgress = reverse ? 0 : 0.06;
+    const initialProgress = reverse ? 1 : revealStartProgress;
     const initialRadius = minRadius + (revealRadius - minRadius) * initialProgress;
     this.applyRevealScale(handle, initialProgress, config.affectSize);
     handle.setRevealParams({
@@ -151,7 +152,7 @@ export class SplatRevealController {
       const step = (now: number) => {
         const t = Math.min(1, (now - start) / duration);
         const eased = applyEase(t, config.ease);
-        const progress = reverse ? 1 - eased : eased;
+        const progress = reverse ? 1 - eased : revealStartProgress + (1 - revealStartProgress) * eased;
         this.applyRevealScale(handle, progress, config.affectSize);
         const radius = minRadius + (revealRadius - minRadius) * progress;
         handle.setRevealParams({

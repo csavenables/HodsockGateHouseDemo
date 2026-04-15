@@ -20,7 +20,7 @@ export interface AppShellOptions {
 
 const THEME_STORAGE_KEY = 'hodsock.viewer.theme';
 const DRAG_HINT_DELAY_MS = 1000;
-const END_LIGHTBOX_DELAY_MS = 20000;
+const END_LIGHTBOX_DELAY_MS = 30000;
 const END_LIGHTBOX_DISMISS_MS = 260;
 const ENTRY_LOAD_RING_HIDE_MS = 170;
 const ENTRY_LOAD_REVEAL_LEAD_MS = 120;

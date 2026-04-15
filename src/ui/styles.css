@@ -220,7 +220,7 @@ body,
   max-height: none;
   height: auto;
   object-fit: contain;
-  transform: translateX(-34px);
+  transform: translateX(-44px);
 }
 
 .brand-logo[data-position='top-right'] img {
@@ -1042,7 +1042,7 @@ body,
   .brand-logo img {
     width: min(187px, 49.3vw);
     max-width: 187px;
-    transform: translateX(-26px);
+    transform: translateX(-36px);
   }
 
   .entry-load-ring {

@@ -113,11 +113,11 @@
     },
     "bottomSphere": {
       "durationMs": 10800,
-      "feather": 0.28,
+      "feather": 0.32,
       "originAnchor": "top",
-      "originYOffset": 0.04,
-      "originHeightScale": 0.25,
-      "maxRadiusScale": 3.8
+      "originYOffset": 0.02,
+      "originHeightScale": 0.06,
+      "maxRadiusScale": 1.15
     },
     "bottomClip": {
       "enabled": true,
