@@ -196,7 +196,7 @@ body,
 .brand-logo {
   position: absolute;
   top: max(0.75rem, env(safe-area-inset-top));
-  left: max(0.45rem, env(safe-area-inset-left));
+  left: max(0.8rem, env(safe-area-inset-left));
   z-index: 9999;
   display: block !important;
   visibility: visible !important;
@@ -220,6 +220,11 @@ body,
   max-height: none;
   height: auto;
   object-fit: contain;
+  transform: translateX(-34px);
+}
+
+.brand-logo[data-position='top-right'] img {
+  transform: none;
 }
 
 .app-shell.theme-dark .brand-logo img {
@@ -864,6 +869,7 @@ body,
   .brand-logo img {
     width: min(187px, 49.3vw);
     max-width: 187px;
+    transform: translateX(-26px);
   }
 }
 
