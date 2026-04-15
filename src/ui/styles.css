@@ -305,6 +305,112 @@ body,
   background: var(--control-bg-hover);
 }
 
+.drag-instruction {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(5rem, 22vh, 15rem);
+  transform: translateX(-50%) translateY(6px);
+  z-index: 8;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-pill);
+  background: rgb(255 255 255 / 84%);
+  color: #051a24;
+  padding: 0.42rem 0.74rem;
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0;
+  transition: opacity 160ms ease, transform 160ms ease;
+  pointer-events: none;
+}
+
+.drag-instruction.is-visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.end-lightbox {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: grid;
+  place-items: center;
+  background: rgb(8 19 28 / 32%);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease;
+}
+
+.end-lightbox.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.end-lightbox.is-dismissed {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.end-lightbox-panel {
+  width: min(680px, calc(100vw - 28px));
+  border: 1px solid var(--shell-border);
+  border-radius: var(--radius-panel);
+  background: rgb(255 255 255 / 94%);
+  color: #051a24;
+  padding: 1.2rem 1.3rem;
+  box-shadow: 0 16px 38px rgb(0 0 0 / 18%);
+}
+
+.end-lightbox-copy {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.75;
+  color: #1d3442;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.end-lightbox-line {
+  display: block;
+}
+
+.end-lightbox-credit {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.end-lightbox-actions {
+  margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.48rem;
+}
+
+.end-lightbox-link,
+.end-lightbox-close {
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-pill);
+  background: var(--control-bg);
+  color: var(--control-text);
+  padding: 0.5rem 0.84rem;
+  font-family: var(--font-ui);
+  font-size: 0.71rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.end-lightbox-link:hover,
+.end-lightbox-close:hover {
+  background: var(--control-bg-hover);
+}
+
 .app-shell.entry-active .viewer-host,
 .app-shell.entry-active .annotation-host,
 .app-shell.entry-active .replay-button,
@@ -870,6 +976,10 @@ body,
     width: min(187px, 49.3vw);
     max-width: 187px;
     transform: translateX(-26px);
+  }
+
+  .fullscreen-fab {
+    display: none !important;
   }
 }
 

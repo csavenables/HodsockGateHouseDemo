@@ -146,6 +146,7 @@ export class Viewer {
       renderer: this.webglRenderer,
       scene: this.scene,
       cameraController: this.cameraController,
+      onCloseSelection: () => this.restoreDefaultViewFromAnnotationClose(),
     });
     this.annotationManager.onEditorStateChange((state) => {
       this.ui.setAnnotationEditorState(state);
@@ -623,5 +624,18 @@ export class Viewer {
     anchor.click();
     URL.revokeObjectURL(url);
     console.warn(`Annotation save fallback used: ${result.reason}`);
+  }
+
+  private restoreDefaultViewFromAnnotationClose(): void {
+    if (!this.activeConfig) {
+      return;
+    }
+    this.cameraController.cancelAnimation();
+    this.cameraController.setAutoRotate(false, this.currentIdleRotateSpeed);
+    const home = this.fittedHome ?? this.activeConfig.camera.home;
+    this.cameraController.resetToHome(home, 900);
+    if (this.autoRotate) {
+      this.scheduleIdleResume(920);
+    }
   }
 }

@@ -13,6 +13,7 @@ interface AnnotationManagerOptions {
   renderer: THREE.WebGLRenderer;
   scene: THREE.Scene;
   cameraController: CameraController;
+  onCloseSelection?: () => void;
 }
 
 export interface AnnotationEditorPin {
@@ -468,6 +469,7 @@ export class AnnotationManager {
   private close(): void {
     this.selectedId = null;
     this.resetControlProfile();
+    this.options.onCloseSelection?.();
     this.emitEditorState();
   }
 

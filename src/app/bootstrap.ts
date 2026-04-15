@@ -19,6 +19,11 @@ export interface AppShellOptions {
 }
 
 const THEME_STORAGE_KEY = 'hodsock.viewer.theme';
+const DRAG_HINT_DELAY_MS = 1000;
+const END_LIGHTBOX_DELAY_MS = 20000;
+const END_LIGHTBOX_DISMISS_MS = 260;
+const HODSOCK_WEBSITE_URL = 'https://www.hodsockpriory.com';
+const CHRISTIAN_LINKTREE_URL = 'https://linktr.ee/Csavenables';
 const FORCE_LOGO_ALT = 'Hodsock Priory';
 const FORCE_LOGO_SOURCES = ['./main-logo.svg', 'main-logo.svg', 'branding/main-logo.svg', './branding/main-logo.svg'] as const;
 type ThemeMode = 'light' | 'dark';
@@ -72,6 +77,38 @@ export function createAppShell(
             </h2>
             <p class="entry-subline">An interactive preview designed to give couples a true sense of the space</p>
             <button type="button" class="entry-button" data-enter-experience>Enter Experience</button>
+          </div>
+        </div>
+        <div class="drag-instruction hidden" data-drag-instruction>Drag to explore</div>
+        <div class="end-lightbox hidden" data-end-lightbox>
+          <div class="end-lightbox-panel">
+            <p class="end-lightbox-copy">
+              <span class="end-lightbox-line">Imagine couples exploring the estate like this before booking a visit.</span>
+              <span class="end-lightbox-line">A more immersive first impression for Hodsock Priory.</span>
+              <span class="end-lightbox-line">
+                Pilot concept by
+                <a
+                  class="end-lightbox-credit"
+                  href="${CHRISTIAN_LINKTREE_URL}"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Christian Venables
+                </a>
+              </span>
+            </p>
+            <div class="end-lightbox-actions">
+              <a
+                class="end-lightbox-link"
+                data-end-lightbox-visit
+                href="${HODSOCK_WEBSITE_URL}"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Visit Hodsock Priory
+              </a>
+              <button type="button" class="end-lightbox-close" data-end-lightbox-close>Continue exploring</button>
+            </div>
           </div>
         </div>
         <button type="button" class="annotation-fab hidden" data-annotation-fab aria-label="Toggle annotation editor">
@@ -157,6 +194,10 @@ export function createAppShell(
   const annotationHost = container.querySelector<HTMLElement>('#annotation-host');
   const entryOverlay = container.querySelector<HTMLElement>('[data-entry-overlay]');
   const enterExperienceButton = container.querySelector<HTMLButtonElement>('[data-enter-experience]');
+  const dragInstruction = container.querySelector<HTMLElement>('[data-drag-instruction]');
+  const endLightbox = container.querySelector<HTMLElement>('[data-end-lightbox]');
+  const endLightboxClose = container.querySelector<HTMLButtonElement>('[data-end-lightbox-close]');
+  const endLightboxVisit = container.querySelector<HTMLAnchorElement>('[data-end-lightbox-visit]');
   const annotationFab = container.querySelector<HTMLButtonElement>('[data-annotation-fab]');
   const fullscreenFab = container.querySelector<HTMLButtonElement>('[data-fullscreen-fab]');
   const themeFab = container.querySelector<HTMLButtonElement>('[data-theme-fab]');
@@ -177,6 +218,10 @@ export function createAppShell(
     !annotationHost ||
     !entryOverlay ||
     !enterExperienceButton ||
+    !dragInstruction ||
+    !endLightbox ||
+    !endLightboxClose ||
+    !endLightboxVisit ||
     !annotationFab ||
     !fullscreenFab ||
     !themeFab ||
@@ -262,6 +307,14 @@ export function createAppShell(
     setTheme(themeMode === 'light' ? 'dark' : 'light');
   };
   document.addEventListener('fullscreenchange', syncFullscreenFab);
+  let activeToolbarConfig: SceneConfig | null = null;
+  const isMobileViewport = (): boolean =>
+    window.matchMedia('(max-width: 768px)').matches || window.matchMedia('(pointer: coarse)').matches;
+  const syncFullscreenVisibility = (): void => {
+    const enabled = Boolean(activeToolbarConfig?.ui.enableFullscreen) && !isMobileViewport();
+    fullscreenFab.classList.toggle('hidden', !enabled);
+  };
+  window.addEventListener('resize', syncFullscreenVisibility);
   let annotationPanelOpen = false;
   let latestAnnotationState: AnnotationEditorState | null = null;
   const syncAnnotationFab = (): void => {
@@ -281,10 +334,110 @@ export function createAppShell(
     annotationPanelOpen = !annotationPanelOpen;
     syncAnnotationEditorVisibility();
   };
+  let dragInstructionTimer = 0;
+  let dragInstructionHideTimer = 0;
+  let endLightboxTimer = 0;
+  let hasEnteredExperience = false;
+  let hasInteractionSinceEnter = false;
+  let endLightboxDismissed = false;
+  const clearDragInstructionTimer = (): void => {
+    if (!dragInstructionTimer) {
+      return;
+    }
+    window.clearTimeout(dragInstructionTimer);
+    dragInstructionTimer = 0;
+  };
+  const clearDragInstructionHideTimer = (): void => {
+    if (!dragInstructionHideTimer) {
+      return;
+    }
+    window.clearTimeout(dragInstructionHideTimer);
+    dragInstructionHideTimer = 0;
+  };
+  const clearEndLightboxTimer = (): void => {
+    if (!endLightboxTimer) {
+      return;
+    }
+    window.clearTimeout(endLightboxTimer);
+    endLightboxTimer = 0;
+  };
+  const hideDragInstruction = (): void => {
+    clearDragInstructionHideTimer();
+    if (dragInstruction.classList.contains('hidden')) {
+      return;
+    }
+    dragInstruction.classList.remove('is-visible');
+    dragInstructionHideTimer = window.setTimeout(() => {
+      dragInstruction.classList.add('hidden');
+    }, 180);
+  };
+  const showDragInstruction = (): void => {
+    if (!hasEnteredExperience || hasInteractionSinceEnter) {
+      return;
+    }
+    dragInstruction.classList.remove('hidden');
+    requestAnimationFrame(() => {
+      dragInstruction.classList.add('is-visible');
+    });
+  };
+  const dismissEndLightbox = (): void => {
+    if (endLightbox.classList.contains('hidden')) {
+      endLightboxDismissed = true;
+      return;
+    }
+    endLightbox.classList.remove('is-visible');
+    endLightbox.classList.add('is-dismissed');
+    window.setTimeout(() => {
+      endLightbox.classList.add('hidden');
+      endLightbox.classList.remove('is-dismissed');
+    }, END_LIGHTBOX_DISMISS_MS);
+    endLightboxDismissed = true;
+  };
+  const showEndLightbox = (): void => {
+    if (!hasEnteredExperience || endLightboxDismissed) {
+      return;
+    }
+    endLightbox.classList.remove('hidden');
+    requestAnimationFrame(() => {
+      endLightbox.classList.add('is-visible');
+    });
+  };
+  const markInteraction = (): void => {
+    if (!hasEnteredExperience || hasInteractionSinceEnter) {
+      return;
+    }
+    hasInteractionSinceEnter = true;
+    hideDragInstruction();
+  };
+  const bindPostEnterInteraction = (): void => {
+    viewerHost.addEventListener('pointerdown', markInteraction, { passive: true });
+    viewerHost.addEventListener('wheel', markInteraction, { passive: true });
+    viewerHost.addEventListener('touchstart', markInteraction, { passive: true });
+  };
+  bindPostEnterInteraction();
+  endLightboxClose.onclick = () => {
+    dismissEndLightbox();
+  };
+  endLightboxVisit.onclick = () => {
+    dismissEndLightbox();
+  };
   enterExperienceButton.onclick = () => {
     if (!appShell.classList.contains('entry-active')) {
       return;
     }
+    hasEnteredExperience = true;
+    hasInteractionSinceEnter = false;
+    clearDragInstructionTimer();
+    clearEndLightboxTimer();
+    hideDragInstruction();
+    endLightbox.classList.add('hidden');
+    endLightbox.classList.remove('is-visible', 'is-dismissed');
+    dragInstructionTimer = window.setTimeout(() => {
+      showDragInstruction();
+    }, DRAG_HINT_DELAY_MS);
+    endLightboxTimer = window.setTimeout(() => {
+      showEndLightbox();
+    }, END_LIGHTBOX_DELAY_MS);
     entryOverlay.classList.add('is-dismissed');
     window.setTimeout(() => {
       appShell.classList.remove('entry-active');
@@ -362,11 +515,12 @@ export function createAppShell(
       errorDetails.innerHTML = '';
     },
     configureToolbar(config: SceneConfig): void {
+      activeToolbarConfig = config;
       if (controlsVisible) {
         toolbar.setConfig(config);
       }
       annotationFab.classList.toggle('hidden', !annotationAuthoring || !config.annotations.enabled);
-      fullscreenFab.classList.toggle('hidden', !config.ui.enableFullscreen);
+      syncFullscreenVisibility();
       if (!config.annotations.enabled) {
         annotationPanelOpen = false;
       }
