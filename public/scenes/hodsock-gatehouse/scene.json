@@ -144,8 +144,8 @@
   },
   "branding": {
     "logo": {
-      "enabled": false,
-      "src": "",
+      "enabled": true,
+      "src": "branding/main-logo.svg",
       "alt": "Hodsock Priory",
       "position": "top-left"
     }

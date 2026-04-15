@@ -39,6 +39,8 @@ export interface ViewerUi {
   getAnnotationHostElement(): HTMLElement;
 }
 
+type ThemeMode = 'light' | 'dark';
+
 export class Viewer {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(50, 1, 0.01, 100);
@@ -141,7 +143,7 @@ export class Viewer {
       },
     });
 
-    this.scene.background = new THREE.Color('#000000');
+    this.scene.background = new THREE.Color('#ffffff');
     const ambient = new THREE.AmbientLight('#ffffff', 0.8);
     this.scene.add(ambient);
 
@@ -441,6 +443,12 @@ export class Viewer {
       return;
     }
     this.cameraController.setAutoRotate(false, this.currentIdleRotateSpeed);
+  }
+
+  setThemeMode(theme: ThemeMode): void {
+    const backgroundHex = theme === 'dark' ? '#000000' : '#ffffff';
+    this.scene.background = new THREE.Color(backgroundHex);
+    this.splatRenderer.setBackgroundColor(backgroundHex);
   }
 
   private getHodsockZoomOutMultiplier(): number {

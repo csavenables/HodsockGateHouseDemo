@@ -458,6 +458,20 @@ export class GaussianSplatRenderer implements SplatRenderer {
     }
   }
 
+  setBackgroundColor(colorHex: string): void {
+    if (this.canvas) {
+      this.canvas.style.backgroundColor = colorHex;
+    }
+    const normalized = new THREE.Color(colorHex);
+    const cameraComponent = this.cameraEntity?.camera;
+    if (cameraComponent) {
+      cameraComponent.clearColor = new pc.Color(normalized.r, normalized.g, normalized.b, 1);
+    }
+    if (this.app) {
+      this.app.renderNextFrame = true;
+    }
+  }
+
   async dispose(): Promise<void> {
     await this.clear();
     this.fitData = null;

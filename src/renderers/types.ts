@@ -110,5 +110,6 @@ export interface SplatRenderer {
   getFitData(): SplatFitData | null;
   update(): void;
   render(): void;
+  setBackgroundColor(colorHex: string): void;
   dispose(): Promise<void>;
 }

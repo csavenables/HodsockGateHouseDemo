@@ -17,6 +17,7 @@ export function startApp(): void {
     onToggleAutorotate: () => viewer.toggleAutorotate(),
     onToggleFullscreen: (enable) => viewer.setFullscreen(enable),
     isFullscreen: () => viewer.isFullscreen(),
+    onThemeChange: (theme) => viewer.setThemeMode(theme),
   }, {
     embedMode: runtime.embed,
     controlsVisible: runtime.controlsVisible,
@@ -33,6 +34,7 @@ export function startApp(): void {
     embedMode: runtime.embed,
     autorotateOverride: runtime.autorotateOverride,
   });
+  viewer.setThemeMode(ui.getThemeMode());
   const initialSceneId = runtime.sceneId;
   const referrerOrigin = (() => {
     if (!document.referrer) {

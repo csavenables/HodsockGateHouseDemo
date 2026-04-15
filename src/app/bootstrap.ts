@@ -7,6 +7,7 @@ import { ViewerUi } from '../viewer/Viewer';
 
 export interface AppShell extends ViewerUi {
   toolbar: ToolbarController;
+  getThemeMode(): 'light' | 'dark';
 }
 
 export interface AppShellOptions {
@@ -17,9 +18,35 @@ export interface AppShellOptions {
   onReplay?: () => void;
 }
 
+const THEME_STORAGE_KEY = 'hodsock.viewer.theme';
+const FORCE_LOGO_ALT = 'Hodsock Priory';
+const FORCE_LOGO_SOURCES = ['branding/main-logo.svg', './branding/main-logo.svg', 'main-logo.svg'] as const;
+type ThemeMode = 'light' | 'dark';
+
+function readStoredTheme(): ThemeMode {
+  try {
+    const raw = window.localStorage.getItem(THEME_STORAGE_KEY);
+    return raw === 'dark' ? 'dark' : 'light';
+  } catch {
+    return 'light';
+  }
+}
+
+function persistTheme(theme: ThemeMode): void {
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {
+    // no-op
+  }
+}
+
+type ShellActions = Parameters<typeof createToolbar>[1] & {
+  onThemeChange?: (theme: ThemeMode) => void;
+};
+
 export function createAppShell(
   container: HTMLElement,
-  actions: Parameters<typeof createToolbar>[1],
+  actions: ShellActions,
   options: AppShellOptions = {},
 ): AppShell {
   const embedMode = options.embedMode ?? false;
@@ -39,7 +66,10 @@ export function createAppShell(
         </div>
         <div class="entry-overlay" data-entry-overlay>
           <div class="entry-overlay-content">
-            <h2 class="entry-title">Explore Hodsock Priory before you visit</h2>
+            <h2 class="entry-title">
+              <span class="entry-title-desktop">Explore Hodsock<br />Priory Before<br />You Visit</span>
+              <span class="entry-title-mobile">Explore Hodsock Priory before you visit</span>
+            </h2>
             <p class="entry-subline">An interactive preview designed to give couples a true sense of the space</p>
             <button type="button" class="entry-button" data-enter-experience>Enter Experience</button>
           </div>
@@ -109,6 +139,7 @@ export function createAppShell(
         <button type="button" class="fullscreen-fab hidden" data-fullscreen-fab aria-label="Toggle fullscreen">
           Fullscreen
         </button>
+        <button type="button" class="theme-fab" data-theme-fab aria-label="Toggle theme"></button>
       </main>
       <div class="error-panel hidden" role="alert">
         <h2 class="error-title"></h2>
@@ -128,6 +159,7 @@ export function createAppShell(
   const enterExperienceButton = container.querySelector<HTMLButtonElement>('[data-enter-experience]');
   const annotationFab = container.querySelector<HTMLButtonElement>('[data-annotation-fab]');
   const fullscreenFab = container.querySelector<HTMLButtonElement>('[data-fullscreen-fab]');
+  const themeFab = container.querySelector<HTMLButtonElement>('[data-theme-fab]');
   const brandingLogo = container.querySelector<HTMLElement>('[data-branding-logo]');
   const brandingLogoImage = brandingLogo?.querySelector<HTMLImageElement>('img') ?? null;
   const errorPanel = container.querySelector<HTMLElement>('.error-panel');
@@ -147,6 +179,7 @@ export function createAppShell(
     !enterExperienceButton ||
     !annotationFab ||
     !fullscreenFab ||
+    !themeFab ||
     !brandingLogo ||
     !brandingLogoImage ||
     !errorPanel ||
@@ -162,23 +195,75 @@ export function createAppShell(
 
   const loader: LoaderController = createLoader(viewerHost);
   const toolbar = createToolbar(footer, actions);
+  let currentLogoCandidates: string[] = [];
+  let currentLogoCandidateIndex = 0;
+  const applyLogoSource = (source: string, alt: string): void => {
+    brandingLogoImage.alt = alt || FORCE_LOGO_ALT;
+    brandingLogoImage.src = source;
+    brandingLogo.classList.remove('hidden');
+  };
+  const setLogoWithFallbacks = (sources: readonly string[], alt: string): void => {
+    currentLogoCandidates = Array.from(new Set(sources.filter((source) => source.trim().length > 0)));
+    currentLogoCandidateIndex = 0;
+    if (currentLogoCandidates.length === 0) {
+      return;
+    }
+    applyLogoSource(currentLogoCandidates[0], alt);
+  };
+  brandingLogoImage.onerror = () => {
+    if (currentLogoCandidateIndex >= currentLogoCandidates.length - 1) {
+      return;
+    }
+    currentLogoCandidateIndex += 1;
+    applyLogoSource(currentLogoCandidates[currentLogoCandidateIndex], brandingLogoImage.alt || FORCE_LOGO_ALT);
+  };
+  // Force an immediate logo on boot, then allow scene branding config to override if present.
+  setLogoWithFallbacks(FORCE_LOGO_SOURCES, FORCE_LOGO_ALT);
+  let themeMode: ThemeMode = readStoredTheme();
+  const applyTheme = (nextTheme: ThemeMode): void => {
+    themeMode = nextTheme;
+    appShell.classList.toggle('theme-light', themeMode === 'light');
+    appShell.classList.toggle('theme-dark', themeMode === 'dark');
+    themeFab.textContent = themeMode === 'dark' ? '\u2600' : '\u263E';
+    themeFab.setAttribute(
+      'aria-label',
+      themeMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode',
+    );
+  };
+  const setTheme = (nextTheme: ThemeMode): void => {
+    applyTheme(nextTheme);
+    persistTheme(nextTheme);
+    actions.onThemeChange?.(nextTheme);
+  };
+  applyTheme(themeMode);
   replayButton.onclick = () => options.onReplay?.();
   const syncFullscreenFab = (): void => {
     const enabled = actions.isFullscreen();
     fullscreenFab.classList.toggle('active', enabled);
-    fullscreenFab.textContent = enabled ? 'Exit Fullscreen' : 'Fullscreen';
+    fullscreenFab.textContent = enabled ? '\uD83D\uDDD7' : '\u26F6';
+    fullscreenFab.setAttribute(
+      'aria-label',
+      enabled ? 'Exit fullscreen' : 'Enter fullscreen',
+    );
   };
   fullscreenFab.onclick = () => {
     const enable = !actions.isFullscreen();
     actions.onToggleFullscreen(enable);
     syncFullscreenFab();
   };
+  themeFab.onclick = () => {
+    setTheme(themeMode === 'light' ? 'dark' : 'light');
+  };
   document.addEventListener('fullscreenchange', syncFullscreenFab);
-  let annotationPanelOpen = true;
+  let annotationPanelOpen = false;
   let latestAnnotationState: AnnotationEditorState | null = null;
   const syncAnnotationFab = (): void => {
     annotationFab.classList.toggle('active', annotationPanelOpen);
-    annotationFab.textContent = annotationPanelOpen ? 'Annotations -' : 'Annotations +';
+    annotationFab.textContent = annotationPanelOpen ? '\u2212' : '+';
+    annotationFab.setAttribute(
+      'aria-label',
+      annotationPanelOpen ? 'Collapse annotations' : 'Expand annotations',
+    );
   };
   const syncAnnotationEditorVisibility = (): void => {
     const available = latestAnnotationState?.available ?? false;
@@ -201,16 +286,12 @@ export function createAppShell(
   };
   const setBrandingLogo = (logo: BrandingLogoConfig | null): void => {
     if (!logo || !logo.enabled || !logo.src) {
-      brandingLogo.classList.add('hidden');
-      brandingLogo.removeAttribute('data-position');
-      brandingLogoImage.removeAttribute('src');
-      brandingLogoImage.alt = '';
+      brandingLogo.dataset.position = 'top-left';
+      setLogoWithFallbacks(FORCE_LOGO_SOURCES, FORCE_LOGO_ALT);
       return;
     }
     brandingLogo.dataset.position = logo.position;
-    brandingLogoImage.src = logo.src;
-    brandingLogoImage.alt = logo.alt;
-    brandingLogo.classList.remove('hidden');
+    setLogoWithFallbacks([logo.src, ...FORCE_LOGO_SOURCES], logo.alt || FORCE_LOGO_ALT);
   };
   const getAnnInput = (key: string): HTMLInputElement | null =>
     annotationEditor.querySelector<HTMLInputElement>(`[data-ann="${key}"]`);
@@ -250,6 +331,9 @@ export function createAppShell(
   } | null = null;
   return {
     toolbar,
+    getThemeMode(): ThemeMode {
+      return themeMode;
+    },
     setLoading(loading: boolean, message?: string): void {
       void loading;
       void message;
@@ -281,6 +365,7 @@ export function createAppShell(
       }
       syncAnnotationEditorVisibility();
       syncFullscreenFab();
+      actions.onThemeChange?.(themeMode);
     },
     configureInteriorDebug(
       config: InteriorViewConfig,

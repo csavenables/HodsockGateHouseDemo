@@ -1,22 +1,30 @@
 @font-face {
-  font-family: 'Cormorant Garamond';
-  src: url('/fonts/cormorant/CormorantGaramond-Regular.woff2') format('woff2');
+  font-family: 'Montserrat';
+  src: url('/fonts/montserrat/Montserrat-400.woff2') format('woff2');
   font-style: normal;
   font-weight: 400;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Cormorant Garamond';
-  src: url('/fonts/cormorant/CormorantGaramond-SemiBold.woff2') format('woff2');
+  font-family: 'Montserrat';
+  src: url('/fonts/montserrat/Montserrat-500.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Montserrat';
+  src: url('/fonts/montserrat/Montserrat-600.woff2') format('woff2');
   font-style: normal;
   font-weight: 600;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Cormorant Garamond';
-  src: url('/fonts/cormorant/CormorantGaramond-Bold.woff2') format('woff2');
+  font-family: 'Montserrat';
+  src: url('/fonts/montserrat/Montserrat-700.woff2') format('woff2');
   font-style: normal;
   font-weight: 700;
   font-display: swap;
@@ -27,18 +35,82 @@
   --panel: #121826;
   --text: #ecf2ff;
   --muted: #9ba7c2;
-  --accent: #22c1c3;
-  --accent-strong: #1a9ca6;
+  --accent: #002b39;
+  --accent-strong: #051a24;
   --danger: #d0455b;
-  --shell-text: #1f2a3a;
-  --shell-muted: #667287;
-  --shell-border: rgb(20 35 55 / 14%);
+  --shell-text: #051a24;
+  --shell-muted: #405464;
+  --shell-border: rgb(0 43 57 / 18%);
   --shell-panel-bg: rgb(255 255 255 / 92%);
+  --font-ui: 'Montserrat', 'Segoe UI', Helvetica, Arial, sans-serif;
+  --viewer-bg: #fff;
+  --control-bg: #002b39;
+  --control-text: #f6fbff;
+  --control-border: rgb(0 43 57 / 72%);
+  --control-bg-hover: #051a24;
+  --control-active-bg: rgb(0 43 57 / 10%);
+  --control-active-text: #051a24;
+  --floating-bg: rgb(255 255 255 / 92%);
+  --floating-text: #051a24;
+  --pin-bg: #002b39;
+  --pin-text: #f6fbff;
+  --pin-border: rgb(0 43 57 / 82%);
+  --pin-selected-bg: #051a24;
+  --pin-selected-border: rgb(255 255 255 / 72%);
+  --pin-selected-shadow: 0 0 0 1px rgb(255 255 255 / 22%);
+  --tooltip-bg: #002b39;
+  --tooltip-title: #f6fbff;
+  --tooltip-text: rgb(246 251 255 / 92%);
+  --tooltip-border: rgb(0 43 57 / 82%);
   --radius-pill: 7px;
   --radius-panel: 0.1875rem;
   --radius-control: 0.1125rem;
   --radius-input: 0.0875rem;
   --radius-tooltip: 0.55rem;
+}
+
+.app-shell.theme-light {
+  --viewer-bg: #fff;
+  --control-bg: #002b39;
+  --control-text: #f6fbff;
+  --control-border: rgb(0 43 57 / 72%);
+  --control-bg-hover: #051a24;
+  --control-active-bg: rgb(0 43 57 / 10%);
+  --control-active-text: #051a24;
+  --floating-bg: rgb(255 255 255 / 92%);
+  --floating-text: #051a24;
+  --pin-bg: #002b39;
+  --pin-text: #f6fbff;
+  --pin-border: rgb(0 43 57 / 82%);
+  --pin-selected-bg: #051a24;
+  --pin-selected-border: rgb(255 255 255 / 72%);
+  --pin-selected-shadow: 0 0 0 1px rgb(255 255 255 / 22%);
+  --tooltip-bg: #002b39;
+  --tooltip-title: #f6fbff;
+  --tooltip-text: rgb(246 251 255 / 92%);
+  --tooltip-border: rgb(0 43 57 / 82%);
+}
+
+.app-shell.theme-dark {
+  --viewer-bg: #000;
+  --control-bg: rgb(255 255 255 / 92%);
+  --control-text: #051a24;
+  --control-border: rgb(0 43 57 / 18%);
+  --control-bg-hover: #fff;
+  --control-active-bg: rgb(0 43 57 / 10%);
+  --control-active-text: #051a24;
+  --floating-bg: rgb(255 255 255 / 92%);
+  --floating-text: #051a24;
+  --pin-bg: rgb(255 255 255 / 96%);
+  --pin-text: #051a24;
+  --pin-border: rgb(255 255 255 / 80%);
+  --pin-selected-bg: #ffffff;
+  --pin-selected-border: rgb(0 43 57 / 48%);
+  --pin-selected-shadow: 0 0 0 1px rgb(0 43 57 / 14%);
+  --tooltip-bg: rgb(255 255 255 / 96%);
+  --tooltip-title: #051a24;
+  --tooltip-text: #2d3f4c;
+  --tooltip-border: rgb(255 255 255 / 80%);
 }
 
 * {
@@ -55,7 +127,7 @@ body,
   overflow: hidden;
   background: #fff;
   color: var(--shell-text);
-  font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  font-family: var(--font-ui);
 }
 
 .app-shell {
@@ -82,7 +154,8 @@ body,
   margin: 0;
   font-size: 1.4rem;
   line-height: 1;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
   color: var(--shell-text);
   font-weight: 600;
 }
@@ -91,12 +164,14 @@ body,
   margin: 0;
   color: var(--shell-muted);
   font-size: 1rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .viewer-root {
   position: relative;
   min-height: 0;
-  background: #000;
+  background: var(--viewer-bg);
 }
 
 .app-shell.app-shell-embed .viewer-root {
@@ -113,7 +188,7 @@ body,
   position: absolute;
   top: max(1rem, env(safe-area-inset-top));
   left: max(1rem, env(safe-area-inset-left));
-  z-index: 8;
+  z-index: 30;
   pointer-events: none;
 }
 
@@ -124,9 +199,13 @@ body,
 
 .brand-logo img {
   display: block;
-  max-width: min(180px, 42vw);
-  max-height: 76px;
+  max-width: min(210px, 46vw);
+  max-height: 84px;
   object-fit: contain;
+}
+
+.app-shell.theme-dark .brand-logo img {
+  filter: brightness(0) invert(1);
 }
 
 .entry-overlay {
@@ -159,35 +238,48 @@ body,
   margin: 0;
   font-size: clamp(2.2rem, 5.4vw, 4.4rem);
   line-height: 0.96;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.18em;
   font-weight: 600;
+  text-transform: uppercase;
+}
+
+.entry-title-desktop {
+  display: none;
+}
+
+.entry-title-mobile {
+  display: inline;
 }
 
 .entry-subline {
   margin: 0 auto;
   width: min(620px, 100%);
-  font-size: clamp(1.08rem, 2.05vw, 1.58rem);
-  line-height: 1.22;
+  font-size: clamp(0.9rem, 1.2vw, 1.1rem);
+  line-height: 1.5;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: rgb(255 255 255 / 90%);
 }
 
 .entry-button {
   justify-self: center;
   margin-top: 0.15rem;
-  border: 1px solid rgb(255 255 255 / 64%);
-  background: rgb(255 255 255 / 14%);
-  color: #fff;
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
+  color: var(--control-text);
   border-radius: var(--radius-pill);
   padding: 0.64rem 1.42rem;
-  font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
-  font-size: 1.3rem;
-  letter-spacing: 0.03em;
+  font-family: var(--font-ui);
+  font-size: 0.86rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
   cursor: pointer;
   backdrop-filter: blur(6px);
 }
 
 .entry-button:hover {
-  background: rgb(255 255 255 / 22%);
+  background: var(--control-bg-hover);
 }
 
 .app-shell.entry-active .viewer-host,
@@ -223,10 +315,10 @@ body,
   margin-left: -10.5px;
   margin-top: -10.5px;
   border-radius: 50%;
-  border: 1px solid var(--shell-border);
-  background: rgb(255 255 255 / 94%);
-  color: #000;
-  font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  border: 1px solid var(--pin-border);
+  background: var(--pin-bg);
+  color: var(--pin-text);
+  font-family: var(--font-ui);
   font-size: 0.82rem;
   font-weight: 600;
   line-height: 1;
@@ -244,9 +336,9 @@ body,
 }
 
 .annotation-pin.is-selected {
-  border-color: rgb(20 35 55 / 40%);
-  background: #fff;
-  box-shadow: 0 0 0 1px rgb(20 35 55 / 12%);
+  border-color: var(--pin-selected-border);
+  background: var(--pin-selected-bg);
+  box-shadow: var(--pin-selected-shadow);
 }
 
 .annotation-pin.is-occluded {
@@ -257,25 +349,28 @@ body,
   position: absolute;
   width: min(260px, calc(100vw - 24px));
   padding: 0.65rem 0.7rem;
-  border: 1px solid var(--shell-border);
+  border: 1px solid var(--tooltip-border);
   border-radius: var(--radius-tooltip);
-  background: rgb(255 255 255 / 95%);
+  background: var(--tooltip-bg);
   backdrop-filter: blur(8px);
   pointer-events: none;
 }
 
 .annotation-tooltip-title {
   margin: 0 0 0.25rem;
-  color: #000;
-  font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
-  font-size: 0.9rem;
+  color: var(--tooltip-title);
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .annotation-tooltip-body {
   margin: 0;
-  color: #3a4a61;
-  font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
-  font-size: 0.8rem;
+  color: var(--tooltip-text);
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
   line-height: 1.35;
 }
 
@@ -292,14 +387,15 @@ body,
 }
 
 .annotation-nav-btn {
-  border: 1px solid var(--shell-border);
-  background: rgb(255 255 255 / 92%);
-  color: #000;
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
+  color: var(--control-text);
   border-radius: var(--radius-pill);
   padding: 0.42rem 0.55rem;
-  font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
-  font-size: 0.88rem;
-  letter-spacing: 0.08em;
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   cursor: pointer;
 }
@@ -425,8 +521,9 @@ body,
 .interior-title {
   margin: 0 0 0.2rem;
   color: #000;
-  font-size: 0.72rem;
-  letter-spacing: 0.05em;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
   text-transform: uppercase;
 }
 
@@ -434,7 +531,7 @@ body,
   margin: 0 0 0.2rem;
   color: #3a4a61;
   font-size: 0.68rem;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
@@ -472,8 +569,9 @@ body,
 }
 
 .splat-toggle.active {
-  border-color: rgb(34 193 195 / 65%);
-  background: linear-gradient(120deg, rgb(34 193 195 / 32%), rgb(26 156 166 / 26%));
+  border-color: rgb(0 43 57 / 48%);
+  background: var(--control-active-bg);
+  color: var(--control-active-text);
 }
 
 .splat-toggle.busy {
@@ -495,23 +593,40 @@ body,
   z-index: 2;
   pointer-events: none;
   opacity: 0;
-  background: #000;
+  background: var(--viewer-bg);
+}
+
+.annotation-fab,
+.fullscreen-fab,
+.theme-fab {
+  position: absolute;
+  z-index: 9;
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
+  color: var(--control-text);
+  border-radius: var(--radius-pill);
+  padding: 0.42rem 0.92rem;
+  font-family: var(--font-ui);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  backdrop-filter: blur(6px);
+  cursor: pointer;
 }
 
 .annotation-fab,
 .fullscreen-fab {
-  position: absolute;
-  z-index: 9;
-  border: 1px solid var(--shell-border);
-  background: rgb(255 255 255 / 92%);
-  color: #000;
-  border-radius: var(--radius-pill);
-  padding: 0.42rem 0.92rem;
-  font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
-  font-size: 0.95rem;
-  letter-spacing: 0.02em;
-  backdrop-filter: blur(6px);
-  cursor: pointer;
+  min-width: 42px;
+  min-height: 42px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1;
 }
 
 .annotation-fab {
@@ -524,14 +639,26 @@ body,
   bottom: max(0.8rem, env(safe-area-inset-bottom));
 }
 
+.theme-fab {
+  left: max(0.8rem, env(safe-area-inset-left));
+  bottom: max(0.8rem, env(safe-area-inset-bottom));
+  min-width: 44px;
+  text-align: center;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
 .annotation-fab:hover,
-.fullscreen-fab:hover {
-  background: #fff;
+.fullscreen-fab:hover,
+.theme-fab:hover {
+  background: var(--control-bg-hover);
 }
 
 .annotation-fab.active,
-.fullscreen-fab.active {
-  border-color: rgb(34 193 195 / 60%);
+.fullscreen-fab.active,
+.theme-fab.active {
+  border-color: rgb(0 43 57 / 62%);
+  background: var(--control-active-bg);
 }
 
 .replay-button {
@@ -593,8 +720,9 @@ body,
 
 .toolbar-button.active,
 .toolbar-button-primary {
-  background: linear-gradient(120deg, var(--accent), var(--accent-strong));
-  border-color: transparent;
+  background: var(--control-active-bg);
+  border-color: rgb(0 43 57 / 52%);
+  color: var(--control-active-text);
 }
 
 .loader {
@@ -711,5 +839,15 @@ body,
 
   .toolbar-button {
     width: 100%;
+  }
+}
+
+@media (min-width: 1024px) {
+  .entry-title-desktop {
+    display: inline;
+  }
+
+  .entry-title-mobile {
+    display: none;
   }
 }
