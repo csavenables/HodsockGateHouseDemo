@@ -12,14 +12,16 @@ function parseArg(name, fallback = null) {
 }
 
 async function run() {
+  const mobileProfile = parseArg('mobile', '0') === '1';
   const results = await runStartupBench({
     samples: parseArg('samples', '5'),
     host: parseArg('host', '127.0.0.1'),
     port: parseArg('port', '4173'),
+    mobileProfile,
     url: parseArg('url', null) ?? undefined,
   });
 
-  console.info(`[bench] samples=${results.samples}`);
+  console.info(`[bench] profile=${mobileProfile ? 'mobile' : 'desktop'} samples=${results.samples}`);
   if (results.assetFetchMedianMs !== null) {
     console.info(`[bench] asset_fetch_ms median=${results.assetFetchMedianMs.toFixed(1)}`);
   }
@@ -29,6 +31,12 @@ async function run() {
   console.info(`[bench] first_frame_ms median=${results.firstFrameMedianMs.toFixed(1)}`);
   if (results.introCompleteMedianMs !== null) {
     console.info(`[bench] intro_complete_ms median=${results.introCompleteMedianMs.toFixed(1)}`);
+  }
+  if (results.steadyStateFrameMsMedian !== null) {
+    const fps = 1000 / results.steadyStateFrameMsMedian;
+    console.info(
+      `[bench] steady_state_frame_ms median=${results.steadyStateFrameMsMedian.toFixed(2)} (~${fps.toFixed(1)} fps)`,
+    );
   }
 }
 

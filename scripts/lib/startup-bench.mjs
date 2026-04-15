@@ -12,9 +12,16 @@ export async function runStartupBench(options = {}) {
   const samples = Math.max(1, Number.parseInt(String(options.samples ?? 5), 10));
   const host = options.host ?? '127.0.0.1';
   const port = String(options.port ?? '4173');
-  const pageUrl =
+  const mobileProfile = Boolean(options.mobileProfile);
+  const baseUrl =
     options.url ??
     `http://${host}:${port}/?scene=hodsock-gatehouse&embed=1&controls=0&replayButton=0`;
+  const pageUrl = mobileProfile && !baseUrl.includes('mobileProfile=')
+    ? `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}mobileProfile=1`
+    : baseUrl;
+  const viewport = options.viewport ?? (mobileProfile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
+  const deviceScaleFactor = mobileProfile ? options.deviceScaleFactor ?? 3 : options.deviceScaleFactor;
+  const steadyStateSampleMs = Math.max(1000, Number.parseInt(String(options.steadyStateSampleMs ?? 3000), 10));
 
   let chromium;
   try {
@@ -40,11 +47,15 @@ export async function runStartupBench(options = {}) {
     const fetchMs = [];
     const decodeMs = [];
     const introComplete = [];
+    const steadyStateFrameMs = [];
 
     for (let i = 0; i < samples; i += 1) {
       const browser = await chromium.launch({ headless: true });
       const context = await browser.newContext({
-        viewport: { width: 1440, height: 900 },
+        viewport,
+        deviceScaleFactor,
+        isMobile: mobileProfile,
+        hasTouch: mobileProfile,
         ignoreHTTPSErrors: true,
       });
       const page = await context.newPage();
@@ -97,6 +108,36 @@ export async function runStartupBench(options = {}) {
         await sleep(150);
       }
 
+      const steadyMs = await page.evaluate(async (durationMs) => {
+        const deltas = [];
+        const started = performance.now();
+        let last = started;
+        return new Promise((resolve) => {
+          const step = (now) => {
+            deltas.push(now - last);
+            last = now;
+            if (now - started >= durationMs) {
+              if (deltas.length === 0) {
+                resolve(null);
+                return;
+              }
+              const sorted = [...deltas].sort((a, b) => a - b);
+              const mid = Math.floor(sorted.length / 2);
+              const medianDelta = sorted.length % 2 === 0
+                ? (sorted[mid - 1] + sorted[mid]) / 2
+                : sorted[mid];
+              resolve(medianDelta);
+              return;
+            }
+            requestAnimationFrame(step);
+          };
+          requestAnimationFrame(step);
+        });
+      }, steadyStateSampleMs);
+      if (Number.isFinite(steadyMs)) {
+        steadyStateFrameMs.push(steadyMs);
+      }
+
       await context.close();
       await browser.close();
       await sleep(250);
@@ -112,6 +153,7 @@ export async function runStartupBench(options = {}) {
       decodeInitMedianMs: decodeMs.length > 0 ? median(decodeMs) : null,
       firstFrameMedianMs: median(firstFrame),
       introCompleteMedianMs: introComplete.length > 0 ? median(introComplete) : null,
+      steadyStateFrameMsMedian: steadyStateFrameMs.length > 0 ? median(steadyStateFrameMs) : null,
     };
   } finally {
     await previewServer.close();

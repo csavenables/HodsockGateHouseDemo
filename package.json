@@ -20,6 +20,8 @@
     "convert:sog:aggressive": "node scripts/convert-sog.mjs --preset aggressive --mode all",
     "convert:sog:lod": "node scripts/convert-sog.mjs --preset balanced --mode lod",
     "bench:startup": "node scripts/bench-startup.mjs --samples 5",
+    "bench:startup:mobile": "node scripts/bench-startup.mjs --samples 5 --mobile 1",
+    "bench:startup:matrix": "node scripts/bench-startup-matrix.mjs --samples 5",
     "bench:size-and-startup": "node scripts/bench-size-and-startup.mjs --samples 5"
   },
   "dependencies": {

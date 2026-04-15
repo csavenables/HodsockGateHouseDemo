@@ -119,6 +119,13 @@ async function run() {
   if (bench.introCompleteMedianMs !== null) {
     console.info(`[bench] intro_complete_ms median=${bench.introCompleteMedianMs.toFixed(1)}`);
   }
+  if (bench.steadyStateFrameMsMedian !== null) {
+    console.info(
+      `[bench] steady_state_frame_ms median=${bench.steadyStateFrameMsMedian.toFixed(2)} (~${(
+        1000 / bench.steadyStateFrameMsMedian
+      ).toFixed(1)} fps)`,
+    );
+  }
 }
 
 run().catch((error) => {

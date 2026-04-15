@@ -218,7 +218,7 @@ export class GaussianSplatRenderer implements SplatRenderer {
 
     const app = new pc.Application(this.canvas, {
       graphicsDeviceOptions: {
-        antialias: true,
+        antialias: !context.disableAntialias,
         alpha: true,
         powerPreference: 'high-performance',
       },
@@ -262,6 +262,9 @@ export class GaussianSplatRenderer implements SplatRenderer {
       this.applyRuntimeConfigToComponent(handle.component);
       this.applyRevealParams(handle);
     }
+    console.info(
+      `[perf] sog_runtime high_quality_sh=${this.runtimeConfig.highQualitySH ? 1 : 0} splat_budget=${this.runtimeConfig.splatBudget} lod_base_distance=${this.runtimeConfig.lodBaseDistance.toFixed(2)} lod_multiplier=${this.runtimeConfig.lodMultiplier.toFixed(2)} lod_update_distance=${this.runtimeConfig.lodUpdateDistance.toFixed(2)} lod_update_angle=${this.runtimeConfig.lodUpdateAngle.toFixed(2)} color_update_distance=${this.runtimeConfig.colorUpdateDistance.toFixed(2)} color_update_angle=${this.runtimeConfig.colorUpdateAngle.toFixed(2)} cooldown_ticks=${this.runtimeConfig.cooldownTicks} max_dpr=${this.maxDevicePixelRatio.toFixed(2)}`,
+    );
     this.app?.renderNextFrame && (this.app.renderNextFrame = true);
   }
 

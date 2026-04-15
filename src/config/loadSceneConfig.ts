@@ -43,6 +43,7 @@ function normalizeAssetPaths(config: SceneConfig): SceneConfig {
   const normalizedAssets = config.assets.map((asset) => ({
     ...asset,
     src: resolveAssetPath(asset.src),
+    mobileSrc: asset.mobileSrc ? resolveAssetPath(asset.mobileSrc) : undefined,
   }));
 
   return {

@@ -93,6 +93,7 @@ export interface RendererContext {
   camera: THREE.PerspectiveCamera;
   renderer: THREE.WebGLRenderer;
   rootElement: HTMLElement;
+  disableAntialias?: boolean;
 }
 
 export interface SplatRenderer {

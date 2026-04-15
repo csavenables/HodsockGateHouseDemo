@@ -9,6 +9,7 @@ export interface SplatTransform {
 export interface SplatAssetConfig {
   id: string;
   src: string;
+  mobileSrc?: string;
   fallbackSrc?: string;
   transform: SplatTransform;
   visibleDefault: boolean;
@@ -201,6 +202,20 @@ export interface SogRuntimeConfig {
   cooldownTicks: number;
 }
 
+export interface MobileOverridesConfig {
+  maxDevicePixelRatio?: number;
+  disableAntialias?: boolean;
+  highQualitySH?: boolean;
+  splatBudget?: number;
+  lodBaseDistance?: number;
+  lodMultiplier?: number;
+  lodUpdateDistance?: number;
+  lodUpdateAngle?: number;
+  colorUpdateDistance?: number;
+  colorUpdateAngle?: number;
+  cooldownTicks?: number;
+}
+
 export interface SceneConfig {
   id: string;
   title: string;
@@ -217,6 +232,7 @@ export interface SceneConfig {
   cinematicReveal: CinematicRevealConfig;
   performanceProfile: PerformanceProfileConfig;
   sogRuntime: SogRuntimeConfig;
+  mobileOverrides: MobileOverridesConfig;
   interiorView: InteriorViewConfig;
   annotations: AnnotationsConfig;
   branding: BrandingConfig;
@@ -335,6 +351,7 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
       assets.push({
         id: readString(item, 'id', errors),
         src: readString(item, 'src', errors),
+        mobileSrc: readOptionalString(item, 'mobileSrc', errors),
         fallbackSrc: readOptionalString(item, 'fallbackSrc', errors),
         transform: {
           position: readVec3(transformValue, 'position', errors),
@@ -395,6 +412,10 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
   if (interiorValue !== undefined && !isObject(interiorValue)) {
     errors.push('"interiorView" must be an object when provided.');
   }
+  const mobileOverridesValue = raw.mobileOverrides;
+  if (mobileOverridesValue !== undefined && !isObject(mobileOverridesValue)) {
+    errors.push('"mobileOverrides" must be an object when provided.');
+  }
   const annotationsValue = raw.annotations;
   if (annotationsValue !== undefined && !isObject(annotationsValue)) {
     errors.push('"annotations" must be an object when provided.');
@@ -409,6 +430,7 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
   const cinematicRevealObject = isObject(cinematicRevealValue) ? cinematicRevealValue : {};
   const performanceProfileObject = isObject(performanceProfileValue) ? performanceProfileValue : {};
   const sogRuntimeObject = isObject(sogRuntimeValue) ? sogRuntimeValue : {};
+  const mobileOverridesObject = isObject(mobileOverridesValue) ? mobileOverridesValue : {};
   const particleIntroValue = revealObject.particleIntro;
   if (particleIntroValue !== undefined && !isObject(particleIntroValue)) {
     errors.push('"reveal.particleIntro" must be an object when provided.');
@@ -689,6 +711,43 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
       colorUpdateAngle: isNumber(sogRuntimeObject.colorUpdateAngle) ? sogRuntimeObject.colorUpdateAngle : 2,
       cooldownTicks: isNumber(sogRuntimeObject.cooldownTicks) ? sogRuntimeObject.cooldownTicks : 100,
     },
+    mobileOverrides: {
+      maxDevicePixelRatio: isNumber(mobileOverridesObject.maxDevicePixelRatio)
+        ? mobileOverridesObject.maxDevicePixelRatio
+        : undefined,
+      disableAntialias:
+        typeof mobileOverridesObject.disableAntialias === 'boolean'
+          ? mobileOverridesObject.disableAntialias
+          : undefined,
+      highQualitySH:
+        typeof mobileOverridesObject.highQualitySH === 'boolean'
+          ? mobileOverridesObject.highQualitySH
+          : undefined,
+      splatBudget: isNumber(mobileOverridesObject.splatBudget)
+        ? mobileOverridesObject.splatBudget
+        : undefined,
+      lodBaseDistance: isNumber(mobileOverridesObject.lodBaseDistance)
+        ? mobileOverridesObject.lodBaseDistance
+        : undefined,
+      lodMultiplier: isNumber(mobileOverridesObject.lodMultiplier)
+        ? mobileOverridesObject.lodMultiplier
+        : undefined,
+      lodUpdateDistance: isNumber(mobileOverridesObject.lodUpdateDistance)
+        ? mobileOverridesObject.lodUpdateDistance
+        : undefined,
+      lodUpdateAngle: isNumber(mobileOverridesObject.lodUpdateAngle)
+        ? mobileOverridesObject.lodUpdateAngle
+        : undefined,
+      colorUpdateDistance: isNumber(mobileOverridesObject.colorUpdateDistance)
+        ? mobileOverridesObject.colorUpdateDistance
+        : undefined,
+      colorUpdateAngle: isNumber(mobileOverridesObject.colorUpdateAngle)
+        ? mobileOverridesObject.colorUpdateAngle
+        : undefined,
+      cooldownTicks: isNumber(mobileOverridesObject.cooldownTicks)
+        ? mobileOverridesObject.cooldownTicks
+        : undefined,
+    },
     interiorView: {
       enabled: typeof interiorObject.enabled === 'boolean' ? interiorObject.enabled : false,
       target: isVec3(interiorObject.target) ? interiorObject.target : [0, 0, 0],
@@ -853,6 +912,54 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
   if (config.sogRuntime.cooldownTicks < 0) {
     errors.push('"sogRuntime.cooldownTicks" must be >= 0.');
   }
+  if (
+    config.mobileOverrides.maxDevicePixelRatio !== undefined &&
+    config.mobileOverrides.maxDevicePixelRatio <= 0
+  ) {
+    errors.push('"mobileOverrides.maxDevicePixelRatio" must be > 0 when provided.');
+  }
+  if (config.mobileOverrides.splatBudget !== undefined && config.mobileOverrides.splatBudget < 0) {
+    errors.push('"mobileOverrides.splatBudget" must be >= 0 when provided.');
+  }
+  if (
+    config.mobileOverrides.lodBaseDistance !== undefined &&
+    config.mobileOverrides.lodBaseDistance <= 0
+  ) {
+    errors.push('"mobileOverrides.lodBaseDistance" must be > 0 when provided.');
+  }
+  if (
+    config.mobileOverrides.lodMultiplier !== undefined &&
+    config.mobileOverrides.lodMultiplier <= 1
+  ) {
+    errors.push('"mobileOverrides.lodMultiplier" must be > 1 when provided.');
+  }
+  if (
+    config.mobileOverrides.lodUpdateDistance !== undefined &&
+    config.mobileOverrides.lodUpdateDistance < 0
+  ) {
+    errors.push('"mobileOverrides.lodUpdateDistance" must be >= 0 when provided.');
+  }
+  if (
+    config.mobileOverrides.lodUpdateAngle !== undefined &&
+    config.mobileOverrides.lodUpdateAngle < 0
+  ) {
+    errors.push('"mobileOverrides.lodUpdateAngle" must be >= 0 when provided.');
+  }
+  if (
+    config.mobileOverrides.colorUpdateDistance !== undefined &&
+    config.mobileOverrides.colorUpdateDistance < 0
+  ) {
+    errors.push('"mobileOverrides.colorUpdateDistance" must be >= 0 when provided.');
+  }
+  if (
+    config.mobileOverrides.colorUpdateAngle !== undefined &&
+    config.mobileOverrides.colorUpdateAngle < 0
+  ) {
+    errors.push('"mobileOverrides.colorUpdateAngle" must be >= 0 when provided.');
+  }
+  if (config.mobileOverrides.cooldownTicks !== undefined && config.mobileOverrides.cooldownTicks < 0) {
+    errors.push('"mobileOverrides.cooldownTicks" must be >= 0 when provided.');
+  }
   if (config.interiorView.radius <= 0) {
     errors.push('"interiorView.radius" must be > 0.');
   }
@@ -904,6 +1011,15 @@ export function validateSceneConfig(raw: unknown): { ok: true; data: SceneConfig
       if (!normalized.endsWith('.sog') && !normalized.endsWith('lod-meta.json')) {
         errors.push(
           `Hodsock SOG-native mode requires ".sog" or "lod-meta.json" asset sources. Invalid src: "${asset.src}".`,
+        );
+      }
+      if (
+        asset.mobileSrc &&
+        !asset.mobileSrc.toLowerCase().endsWith('.sog') &&
+        !asset.mobileSrc.toLowerCase().endsWith('lod-meta.json')
+      ) {
+        errors.push(
+          `Hodsock SOG-native mode requires ".sog" or "lod-meta.json" mobileSrc values. Invalid mobileSrc: "${asset.mobileSrc}".`,
         );
       }
       if (asset.fallbackSrc) {

@@ -14,12 +14,12 @@ import {
 } from '@playcanvas/splat-transform';
 
 const DEFAULT_INPUT_CANDIDATES = [
+  'public/scenes/hodsock-gatehouse/splats/sog/hq/scene.sog',
+  'public/scenes/hodsock-gatehouse/splats/HodsockCombined30k.sog',
   'public/scenes/hodsock-gatehouse/splats/HodsockCombined30k.splat',
   'public/scenes/hodsock-gatehouse/splats/HodsockCombined30k.ply',
   'public/scenes/hodsock-gatehouse/splats/HodsockCombined30k.ksplat',
   'public/scenes/hodsock-gatehouse/splats/HodsockCombined30k.spz',
-  'public/scenes/hodsock-gatehouse/splats/HodsockCombined30k.sog',
-  'public/scenes/hodsock-gatehouse/splats/sog/balanced/lod/lod-meta.json',
 ];
 const DEFAULT_OUTPUT_ROOT = 'public/scenes/hodsock-gatehouse/splats/sog';
 
@@ -118,8 +118,8 @@ async function getDirectorySize(directoryPath) {
   return total;
 }
 
-function buildProcessActions(preset, includeLodAssignment) {
-  const actions = [
+function buildProcessActions(preset) {
+  return [
     { kind: 'filterNaN' },
     { kind: 'filterBands', value: preset.harmonics },
     {
@@ -129,11 +129,6 @@ function buildProcessActions(preset, includeLodAssignment) {
       value: preset.opacityThreshold,
     },
   ];
-  if (includeLodAssignment) {
-    // Ensure LOD streaming output can be produced even when source data has no explicit lod column.
-    actions.push({ kind: 'lod', value: 0 });
-  }
-  return actions;
 }
 
 function buildTransformOptions(iterationsArg, lodChunkCountArg, lodChunkExtentArg) {
@@ -150,7 +145,21 @@ function buildTransformOptions(iterationsArg, lodChunkCountArg, lodChunkExtentAr
   };
 }
 
-async function loadProcessedDataTable(inputPath, options, preset, mode) {
+function parseLodPercents(value) {
+  const parsed = String(value)
+    .split(',')
+    .map((entry) => Number.parseFloat(entry.trim()))
+    .filter((entry) => Number.isFinite(entry));
+  if (parsed.length < 2) {
+    throw new Error('LOD profile must contain at least two comma-separated percentages.');
+  }
+  if (parsed.some((entry) => entry <= 0 || entry > 100)) {
+    throw new Error('LOD percentages must be within (0, 100].');
+  }
+  return parsed;
+}
+
+async function loadProcessedDataTable(inputPath, options, preset) {
   const inputData = await fs.readFile(inputPath);
   const inputFormat = getInputFormat(inputPath);
   const readFs = new MemoryReadFileSystem();
@@ -168,7 +177,7 @@ async function loadProcessedDataTable(inputPath, options, preset, mode) {
     throw new Error('No Gaussian splat tables were read from input asset.');
   }
 
-  const actions = buildProcessActions(preset, mode === 'lod' || mode === 'all');
+  const actions = buildProcessActions(preset);
   const processed = dataTables
     .map((table) => processDataTable(table, actions))
     .filter((table) => table !== null && table.numRows > 0);
@@ -178,6 +187,22 @@ async function loadProcessedDataTable(inputPath, options, preset, mode) {
   }
 
   return processed.length === 1 ? processed[0] : combine(processed);
+}
+
+function buildLodDataTable(baseTable, lodPercents) {
+  const lodTables = lodPercents.map((percent, lodLevel) => {
+    const actions = [];
+    if (percent < 99.999) {
+      actions.push({ kind: 'decimate', count: null, percent });
+    }
+    actions.push({ kind: 'lod', value: lodLevel });
+    return processDataTable(baseTable.clone(), actions);
+  });
+  const nonEmpty = lodTables.filter((table) => table.numRows > 0);
+  if (nonEmpty.length === 0) {
+    throw new Error('LOD profile produced zero splats.');
+  }
+  return nonEmpty.length === 1 ? nonEmpty[0] : combine(nonEmpty);
 }
 
 async function writeMemoryFilesToDisk(memoryFs, targetRoot, keepOnly = null) {
@@ -209,6 +234,7 @@ async function run() {
 
   const mode = parseMode(parseArg('mode', 'all'));
   const inputPath = await resolveInputPath(parseArg('input', null));
+  const lodPercents = parseLodPercents(parseArg('lod-levels', '100,35,12'));
   const outputRootArg = parseArg('output-root', DEFAULT_OUTPUT_ROOT);
   const outputRoot = path.resolve(process.cwd(), outputRootArg, presetName);
   const bundledOutputPath = path.join(outputRoot, 'scene.sog');
@@ -222,7 +248,7 @@ async function run() {
   );
 
   const started = performance.now();
-  const dataTable = await loadProcessedDataTable(inputPath, options, preset, mode);
+  const baseDataTable = await loadProcessedDataTable(inputPath, options, preset);
 
   if (mode === 'all' || mode === 'bundled') {
     const memoryFs = new MemoryFileSystem();
@@ -231,7 +257,7 @@ async function run() {
       {
         filename: bundledName,
         outputFormat: getOutputFormat(bundledName, options),
-        dataTable,
+        dataTable: baseDataTable,
         options,
       },
       memoryFs,
@@ -240,13 +266,14 @@ async function run() {
   }
 
   if (mode === 'all' || mode === 'lod') {
+    const lodDataTable = buildLodDataTable(baseDataTable, lodPercents);
     const memoryFs = new MemoryFileSystem();
     const lodName = 'lod-meta.json';
     await writeFile(
       {
         filename: lodName,
         outputFormat: getOutputFormat(lodName, options),
-        dataTable,
+        dataTable: lodDataTable,
         options,
       },
       memoryFs,
@@ -275,7 +302,7 @@ async function run() {
     console.info(
       `[convert:sog] lod=${path.relative(process.cwd(), lodMetaOutputPath)} bundle_size=${formatBytes(
         lodSize,
-      )} reduction=${reductionPercent(inputSize, lodSize).toFixed(1)}%`,
+      )} reduction=${reductionPercent(inputSize, lodSize).toFixed(1)}% lod_profile=${lodPercents.join(',')}`,
     );
   }
 }

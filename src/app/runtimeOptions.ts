@@ -2,6 +2,7 @@ export interface RuntimeOptions {
   sceneId: string;
   embed: boolean;
   autorotateOverride: boolean | null;
+  mobileProfileOverride: boolean | null;
   controlsVisible: boolean;
   replayButtonVisible: boolean;
   annotate: boolean;
@@ -44,6 +45,7 @@ export function readRuntimeOptions(search: string, defaultSceneId = 'hodsock-gat
     sceneId,
     embed,
     autorotateOverride: parseBooleanFlag(params.get('autorotate')),
+    mobileProfileOverride: parseBooleanFlag(params.get('mobileProfile')),
     controlsVisible,
     replayButtonVisible,
     annotate: parseBooleanFlag(params.get('annotate')) ?? false,

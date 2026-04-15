@@ -33,6 +33,7 @@ export function startApp(): void {
   viewer = new Viewer(ui.getCanvasHostElement(), ui, {
     embedMode: runtime.embed,
     autorotateOverride: runtime.autorotateOverride,
+    mobileProfile: runtime.mobileProfileOverride,
   });
   viewer.setThemeMode(ui.getThemeMode());
   const initialSceneId = runtime.sceneId;

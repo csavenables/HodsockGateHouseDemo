@@ -5,6 +5,7 @@
     {
       "id": "gatehouse_main",
       "src": "scenes/hodsock-gatehouse/splats/sog/hq/scene.sog",
+      "mobileSrc": "scenes/hodsock-gatehouse/splats/sog/balanced/lod/lod-meta.json",
       "transform": {
         "position": [0, 0, 0],
         "rotation": [180, -203, 0],
@@ -78,6 +79,19 @@
     "colorUpdateDistance": 0.45,
     "colorUpdateAngle": 3,
     "cooldownTicks": 160
+  },
+  "mobileOverrides": {
+    "maxDevicePixelRatio": 1.15,
+    "disableAntialias": true,
+    "highQualitySH": false,
+    "splatBudget": 1000000,
+    "lodBaseDistance": 3.8,
+    "lodMultiplier": 2.8,
+    "lodUpdateDistance": 1.1,
+    "lodUpdateAngle": 7,
+    "colorUpdateDistance": 0.7,
+    "colorUpdateAngle": 5,
+    "cooldownTicks": 240
   },
   "reveal": {
     "enabled": true,

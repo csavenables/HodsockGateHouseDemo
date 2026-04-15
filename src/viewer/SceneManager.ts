@@ -18,6 +18,10 @@ export interface SceneManagerEvents {
   onItemsChanged(items: SplatToggleItem[]): void;
 }
 
+export interface SceneManagerOptions {
+  useMobileProfile?: boolean;
+}
+
 export interface RevealHookOptions {
   reducedMotion?: boolean;
   revealOverride?: RevealConfig;
@@ -48,6 +52,7 @@ export class SceneManager {
   constructor(
     private readonly renderer: SplatRenderer,
     private readonly events: SceneManagerEvents,
+    private readonly options: SceneManagerOptions = {},
   ) {}
 
   get config(): SceneConfig | null {
@@ -71,7 +76,7 @@ export class SceneManager {
     this.events.onLoading('Loading scene configuration...');
     let config: SceneConfig;
     try {
-      config = await loadSceneConfig(sceneId);
+      config = this.applyRuntimeProfile(await loadSceneConfig(sceneId));
     } catch (error) {
       if (error instanceof Error) {
         throw new SceneLoadError(error.message);
@@ -91,6 +96,7 @@ export class SceneManager {
 
     this.events.onLoading('Loading splat assets...');
     try {
+      this.logRuntimeProfile(config);
       this.renderer.configureScene(config);
       await this.renderer.clear();
       if (loadVersion !== this.opVersion) {
@@ -306,6 +312,45 @@ export class SceneManager {
       ...base,
       enabled: base.enabled && activeId === 'staircase',
     });
+  }
+
+  private applyRuntimeProfile(config: SceneConfig): SceneConfig {
+    if (!this.options.useMobileProfile) {
+      return config;
+    }
+    const overrides = config.mobileOverrides;
+    const assets = config.assets.map((asset) => ({
+      ...asset,
+      src: asset.mobileSrc ?? asset.src,
+    }));
+    return {
+      ...config,
+      assets,
+      performanceProfile: {
+        ...config.performanceProfile,
+        maxDevicePixelRatio:
+          overrides.maxDevicePixelRatio ?? config.performanceProfile.maxDevicePixelRatio,
+      },
+      sogRuntime: {
+        ...config.sogRuntime,
+        highQualitySH: overrides.highQualitySH ?? config.sogRuntime.highQualitySH,
+        splatBudget: overrides.splatBudget ?? config.sogRuntime.splatBudget,
+        lodBaseDistance: overrides.lodBaseDistance ?? config.sogRuntime.lodBaseDistance,
+        lodMultiplier: overrides.lodMultiplier ?? config.sogRuntime.lodMultiplier,
+        lodUpdateDistance: overrides.lodUpdateDistance ?? config.sogRuntime.lodUpdateDistance,
+        lodUpdateAngle: overrides.lodUpdateAngle ?? config.sogRuntime.lodUpdateAngle,
+        colorUpdateDistance:
+          overrides.colorUpdateDistance ?? config.sogRuntime.colorUpdateDistance,
+        colorUpdateAngle: overrides.colorUpdateAngle ?? config.sogRuntime.colorUpdateAngle,
+        cooldownTicks: overrides.cooldownTicks ?? config.sogRuntime.cooldownTicks,
+      },
+    };
+  }
+
+  private logRuntimeProfile(config: SceneConfig): void {
+    const runtimeProfile = this.options.useMobileProfile ? 'mobile' : 'desktop';
+    const activeSources = config.assets.map((asset) => asset.src).join(',');
+    console.info(`[perf] runtime_profile=${runtimeProfile} asset_source=${activeSources}`);
   }
 
 }

@@ -41,14 +41,18 @@ export interface ViewerUi {
 
 type ThemeMode = 'light' | 'dark';
 
+function detectMobileProfile(): boolean {
+  const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+  const narrowViewport = window.matchMedia('(max-width: 900px)').matches;
+  const userAgent = navigator.userAgent.toLowerCase();
+  const touchDevice = /android|iphone|ipad|ipod|mobile/.test(userAgent);
+  return coarsePointer || narrowViewport || touchDevice;
+}
+
 export class Viewer {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(50, 1, 0.01, 100);
-  private readonly webglRenderer = new THREE.WebGLRenderer({
-    antialias: true,
-    alpha: true,
-    powerPreference: 'high-performance',
-  });
+  private readonly webglRenderer: THREE.WebGLRenderer;
   private readonly cameraController: CameraController;
   private readonly splatRenderer = new GaussianSplatRenderer();
   private readonly sceneManager: SceneManager;
@@ -66,6 +70,7 @@ export class Viewer {
   private queuedSelectionId: string | null = null;
   private processingSelection = false;
   private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  private readonly useMobileProfile: boolean;
   private autorotateOverride: boolean | null = null;
   private idleRotateResumeTimer = 0;
   private currentIdleRotateSpeed = 0.35;
@@ -89,32 +94,47 @@ export class Viewer {
   constructor(
     private readonly container: HTMLElement,
     private readonly ui: ViewerUi,
-    options: { embedMode?: boolean; autorotateOverride?: boolean | null } = {},
+    options: { embedMode?: boolean; autorotateOverride?: boolean | null; mobileProfile?: boolean | null } = {},
   ) {
+    this.useMobileProfile = options.mobileProfile ?? detectMobileProfile();
+    this.webglRenderer = new THREE.WebGLRenderer({
+      antialias: !this.useMobileProfile,
+      alpha: true,
+      powerPreference: 'high-performance',
+    });
     this.autorotateOverride = options.autorotateOverride ?? null;
-    this.webglRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.webglRenderer.setPixelRatio(Math.min(window.devicePixelRatio, this.useMobileProfile ? 1.25 : 2));
     this.webglRenderer.setSize(container.clientWidth, container.clientHeight);
     this.webglRenderer.setAnimationLoop(this.onFrame);
     this.webglRenderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(this.webglRenderer.domElement);
+    console.info(
+      `[perf] mobile_profile=${this.useMobileProfile ? 1 : 0} three_antialias=${this.useMobileProfile ? 0 : 1}`,
+    );
 
     this.cameraController = new CameraController(this.camera, this.webglRenderer.domElement);
-    this.sceneManager = new SceneManager(this.splatRenderer, {
-      onLoading: (message) => {
-        this.ui.setLoading(true, message);
+    this.sceneManager = new SceneManager(
+      this.splatRenderer,
+      {
+        onLoading: (message) => {
+          this.ui.setLoading(true, message);
+        },
+        onReady: (config) => {
+          this.ui.configureToolbar(config);
+          this.ui.setSceneTitle(config.title);
+        },
+        onItemsChanged: (items) => {
+          const activeItem = items.find((item) => item.active);
+          this.annotationManager.setActiveAssetId(activeItem?.id ?? null);
+          this.ui.setSplatOptions(items, (id) => {
+            this.enqueueSplatSelection(id);
+          });
+        },
       },
-      onReady: (config) => {
-        this.ui.configureToolbar(config);
-        this.ui.setSceneTitle(config.title);
+      {
+        useMobileProfile: this.useMobileProfile,
       },
-      onItemsChanged: (items) => {
-        const activeItem = items.find((item) => item.active);
-        this.annotationManager.setActiveAssetId(activeItem?.id ?? null);
-        this.ui.setSplatOptions(items, (id) => {
-          this.enqueueSplatSelection(id);
-        });
-      },
-    });
+    );
 
     this.inputBindings = new InputBindings({
       onReset: () => this.resetView(),
@@ -161,6 +181,7 @@ export class Viewer {
       camera: this.camera,
       renderer: this.webglRenderer,
       rootElement: this.container,
+      disableAntialias: this.useMobileProfile,
     });
     this.inputBindings.bind();
     await this.loadScene(sceneId);

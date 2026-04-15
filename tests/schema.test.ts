@@ -61,6 +61,8 @@ describe('validateSceneConfig', () => {
       expect(result.data.sogRuntime.highQualitySH).toBe(false);
       expect(result.data.sogRuntime.lodBaseDistance).toBe(5);
       expect(result.data.sogRuntime.lodMultiplier).toBe(3);
+      expect(result.data.mobileOverrides.maxDevicePixelRatio).toBeUndefined();
+      expect(result.data.mobileOverrides.disableAntialias).toBeUndefined();
       expect(result.data.interiorView.enabled).toBe(false);
       expect(result.data.interiorView.radius).toBe(0.45);
       expect(result.data.annotations.enabled).toBe(false);
@@ -216,6 +218,56 @@ describe('validateSceneConfig', () => {
 
     const result = validateSceneConfig(valid);
     expect(result.ok).toBe(true);
+  });
+
+  it('accepts hodsock mobileSrc and mobile overrides', () => {
+    const valid = {
+      id: 'hodsock-gatehouse',
+      title: 'Hodsock',
+      assets: [
+        {
+          id: 'main',
+          src: '/scenes/hodsock-gatehouse/splats/sog/hq/scene.sog',
+          mobileSrc: '/scenes/hodsock-gatehouse/splats/sog/balanced/lod/lod-meta.json',
+          transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+          visibleDefault: true,
+        },
+      ],
+      camera: {
+        home: { position: [0, 0, 2], target: [0, 0, 0], fov: 50 },
+        limits: { minDistance: 0.4, maxDistance: 4, minPolarAngle: 0.1, maxPolarAngle: 2.9 },
+        transitionMs: 500,
+      },
+      ui: {
+        enableFullscreen: true,
+        enableAutorotate: true,
+        enableReset: true,
+        enablePan: true,
+        autorotateDefaultOn: false,
+      },
+      transitions: { sceneFadeMs: 300 },
+      mobileOverrides: {
+        maxDevicePixelRatio: 1.15,
+        disableAntialias: true,
+        highQualitySH: false,
+        splatBudget: 1000000,
+        lodBaseDistance: 3.8,
+        lodMultiplier: 2.8,
+        lodUpdateDistance: 1.1,
+        lodUpdateAngle: 7,
+        colorUpdateDistance: 0.7,
+        colorUpdateAngle: 5,
+        cooldownTicks: 240,
+      },
+    };
+
+    const result = validateSceneConfig(valid);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.assets[0].mobileSrc).toContain('lod-meta.json');
+      expect(result.data.mobileOverrides.maxDevicePixelRatio).toBe(1.15);
+      expect(result.data.mobileOverrides.disableAntialias).toBe(true);
+    }
   });
 
   it('rejects configs with more than 5 assets', () => {
